@@ -1,0 +1,993 @@
+---
+title: "yEvo caffeine figures"
+author: "Renee C. Geck"
+date: '2024-04-26'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r setup_tools}
+library(dplyr)
+library(ggplot2)
+
+maxd_palette <- c("gray", "#bce6a6", "#6fc4ad", "#1d7eb3", "#1b4897") #brewer YlGnBu
+geno_groups <- read.delim("caf_mut_groups.txt", header=T)
+geno_groups$strain <- as.character(geno_groups$strain)
+```
+
+##FIGURE 1
+
+```{r format_fig1_data}
+fig1_data <- read.delim("tableS4_growth.txt", header=FALSE)
+
+#organize data
+fig1_headers <- fig1_data %>% slice(1:5) 
+fig1_data <- fig1_data %>% slice(-(1:5)) 
+fig1_time <- fig1_data %>% pull(1) 
+fig1_time <- as.numeric(fig1_time) 
+fig1_length <- length(fig1_time)
+fig1_all_data=data.frame()
+col_iter <- c(2:ncol(fig1_data))
+for (iter in col_iter) {
+  col_num <- iter
+  well_strain <- fig1_headers[1,col_num] #strain is first row
+  strain_ls <- rep(well_strain, fig1_length) 
+  strain_ls <- as.character(strain_ls)
+  well_evo <- fig1_headers[2,col_num] #evo is second row
+  evo_ls <- rep(well_evo, fig1_length) 
+  well_conc <- fig1_headers[3,col_num] #conc number is third row
+  conc_ls <- rep(well_conc, fig1_length) 
+  conc_ls <- as.numeric(conc_ls) 
+  well_rep <- fig1_headers[4,col_num] #replicate number is in 4th row
+  rep_ls <- rep(well_rep, fig1_length) 
+  rep_ls <- as.factor(rep_ls) 
+  well_max <- fig1_headers[5,col_num] #highest dose evolved in is 5th row
+  max_ls <- rep(well_max, fig1_length) 
+  max_ls <- as.factor(max_ls) 
+  od_ls <- fig1_data[,col_num]
+  od_ls <- as.numeric(od_ls)
+  well_data <- data.frame(fig1_time, od_ls, strain_ls, evo_ls, rep_ls, conc_ls, max_ls) 
+  fig1_all_data <- rbind(fig1_all_data, well_data)
+  iter <- iter+1
+}
+fig1_all_data <- fig1_all_data %>% rename(time=fig1_time, dens=od_ls, strain=strain_ls, repl=rep_ls, conc=conc_ls, evol=evo_ls, maxd=max_ls)
+
+#linear fits to calculate doubling time
+up_bound_ls <- seq(from=1, to=0.15, by=-0.01) 
+fig1_all_linfits = data.frame()
+for (up_bound in up_bound_ls) { 
+  this_linfit <- fig1_all_data %>% 
+    group_by(strain, conc, evol, maxd, repl) %>%  
+    filter(dens>0.13 & dens<up_bound) %>% 
+    do(mod_lin = summary(lm(log2(dens) ~ time, data = .))) %>%  
+    mutate(intercept = mod_lin$coefficients[1],
+           slope = mod_lin$coefficients[2],
+           Rsq = mod_lin$r.squared,
+           doubling_time = log(2)/mod_lin$coefficients[2],
+           upper_bound = up_bound) %>% 
+    select(-mod_lin)
+  fig1_all_linfits <- rbind(fig1_all_linfits, this_linfit)
+  up_bound <- up_bound+1
+}
+
+#keep linear fits with Rsq>0.85, then take the fit that used the highest upper bound
+fig1_cutoff_linfit <- fig1_all_linfits %>%
+  as.data.frame() %>%
+  filter(Rsq > 0.85)
+fig1_best_linfit <- fig1_cutoff_linfit %>%
+  as.data.frame() %>%
+  group_by(strain, conc, evol, maxd) %>% 
+  filter(upper_bound == max(upper_bound))
+fig1_best_linfit$doubling_time <- fig1_best_linfit$doubling_time*60 #convert hours to minutes
+
+#calculate average doubling time for each clone
+fig1_dt_avg <- fig1_best_linfit %>%
+  group_by(strain, conc, evol, maxd) %>%
+  summarize_at(vars(doubling_time), list(avg_dt=mean, stdev=sd, n=length)) %>%
+  mutate(stderr=stdev/sqrt(as.numeric(n)))
+fig1_dt_avg$evol <- factor(fig1_dt_avg$evol , levels=c("ancestor", "evolved")) 
+fig1_dt_avg$maxd <- factor(fig1_dt_avg$maxd , levels=c("0", "10", "20", "30", "40"))
+
+caffeine_best_linfits <- fig1_best_linfit
+```
+
+```{r fig1A_growth_curves_caffeine}
+fig1_avg_data <- fig1_all_data %>%
+  group_by(time, strain, evol, conc, maxd) %>%
+  summarise_at(vars(dens), list(dens = mean))
+fig1_avg_data$evol <- factor(fig1_avg_data$evol , levels=c("ancestor", "evolved")) 
+fig1_avg_data$maxd <- factor(fig1_avg_data$maxd , levels=c("0", "10", "20", "30", "40"))
+
+fig_1A <- ggplot(data=fig1_avg_data,
+       aes(x=time, y=dens, color=maxd)) + 
+  geom_point(size=0.01, alpha=0.25) +
+  scale_y_continuous(trans = "log2",n.breaks = 15, labels = function(x) ifelse(x == 0, "0", x)) + 
+  labs(x="time (hours)", y="optical density (600nm)") +
+  facet_grid(conc~maxd) + 
+  scale_color_manual(values=maxd_palette) +
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "fig1A_growth.pdf", fig_1A, device="pdf", height = 3.7, width = 7)
+```
+
+```{r 1B_dt_caffeine}
+fig1B <-ggplot(fig1_dt_avg, mapping=aes(x=maxd, y=avg_dt)) +
+  geom_boxplot(show.legend=F, aes(fill=maxd), color="#000000", outlier.size = F) +
+  geom_jitter(height=0, width=0.1) +
+  labs(x="maximum caffeine in evolution experiment (mM)", y="doubling time (min)") +
+  facet_wrap(.~conc, scales="free_y") +
+  theme_linedraw() +
+  theme(panel.grid.minor = element_blank()) +
+  scale_fill_manual(values=maxd_palette) +
+  expand_limits(y=0)
+ggsave(file = "fig1B.pdf", fig1B, device="pdf", height = 2.5, width = 7)
+
+#ANOVA tests
+print(TukeyHSD(aov(avg_dt ~ maxd, data = subset(fig1_dt_avg, conc==0)))) 
+print(TukeyHSD(aov(avg_dt ~ maxd, data = subset(fig1_dt_avg, conc==20)))) 
+print(TukeyHSD(aov(avg_dt ~ maxd, data = subset(fig1_dt_avg, conc==40)))) 
+```
+
+##SUPPLEMENTAL FIGURE S1
+
+```{r supplemental_fig_S1}
+anc_evol_linfit <- fig1_best_linfit
+anc_strains <- c(4612, 4613, 4614, 4615, 4617, 4618)
+anc_evol_linfit$strain[anc_evol_linfit$strain %in% anc_strains] <- anc_evol_linfit$evol
+anc_evol_linfit$strain <- factor(anc_evol_linfit$strain, levels=c("ancestor","4666","4667","4668","4669","4670","4671","4672","4673","4674","4675","4676","4677","4678","4679","4680","4681","4682","4683","4684","4685","4686","4687","4688","4689","4690","4691","4692","4693","4694","4695","4696","4697","4698","4699","4700","4701","4702","4703","4704","4705","4706","4707","4708","4709","4710","4711","4712","4821","4822","4823","4824","4825","4826"))
+
+all_clones_dt <- ggplot(anc_evol_linfit, mapping=aes(x=strain, y=doubling_time)) +
+  geom_boxplot(show.legend=F, color="#000000", outlier.size = F) +
+  geom_jitter(height=0, width=0.1) +
+  labs(x="strain", y="doubling time (min)") +
+  facet_wrap(conc~., ncol=1, scales="free_y") +
+  theme_linedraw() +
+  theme(panel.grid.minor = element_blank()) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  expand_limits(y=0)
+ggsave(file = "figS1_all_clones_dt.pdf", all_clones_dt, device="pdf", height = 9, width = 10)
+
+print(TukeyHSD(aov(doubling_time ~ strain, data = subset(anc_evol_linfit, conc==0))))
+print(TukeyHSD(aov(doubling_time ~ strain, data = subset(anc_evol_linfit, conc==20))))
+print(TukeyHSD(aov(doubling_time ~ strain, data = subset(anc_evol_linfit, conc==40)))) 
+```
+
+##FIGURE 2
+
+```{r Figure2A}
+mut_types_data <- read.delim("caf_mut_types.txt")
+mut_types_data$type <- factor(mut_types_data$type, levels = c("missense only", "CNV", "Ty insertion", "CNV and Ty insertion"))
+mut_types_data$mtDNA <- factor(mut_types_data$mtDNA, levels = c("loss", "present"))
+
+muttypes_plot <- ggplot(data=mut_types_data,
+       aes(x=type, y=count, fill=mtDNA)) +
+  geom_col() +
+  xlab("") +
+  ylab("number caffeine-tolerant\nevolved clones") +
+  labs(fill="mtDNA") +
+  theme_linedraw()+
+  scale_fill_viridis_d(begin=0.3, end=0.8) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))
+ggsave(file = "fig2A_summary_types.pdf", muttypes_plot, device="pdf", height = 3.5, width = 3.3)
+```
+
+```{r Figure2B}
+citations_data <- read.delim("caf_citations_pops.txt")
+citations_data$gene <- factor(citations_data$gene, levels = c("PDR1", "SIT4", "PDR5", "SKY1", "other"))
+citations_data$citations <- factor(citations_data$citations, levels = c("citation with caffeine", "screen hit with caffeine", "citation/screen hit with rapamycin but not caffeine", "none"))
+
+nmuts_plot <- ggplot(data=citations_data,
+       aes(x=gene, y=count, fill=citations)) +
+  geom_col() +
+  xlab("gene") +
+  ylab("number of populations") +
+  labs(fill="") +
+  theme_linedraw()+
+  scale_fill_manual(values=c("#ff5b00", "#ffa500", "#f8d568", "#d3d3d3"))+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))
+ggsave(file = "2B_summary_muts.pdf", nmuts_plot, device="pdf", height = 3, width = 6)
+```
+
+```{r fig2B_PDR1-5-SIT4}
+caffeine_best_linfits <- fig1_best_linfit
+caffeine_best_linfits <- left_join(caffeine_best_linfits, geno_groups)
+caffeine_best_linfits$geno_group <- factor(caffeine_best_linfits$geno_group, levels=c("ancestor", "none", "other", "PDR1", "PDR5", "SIT4", "PDR1-PDR5", "PDR1-SIT4", "PDR5-SIT4", "PDR1-PDR5-SIT4"))
+fig1_dt_avg <- left_join(fig1_dt_avg, geno_groups)
+fig1_dt_avg$geno_group <- factor(fig1_dt_avg$geno_group, levels=c("ancestor", "none", "other", "PDR1", "PDR5", "SIT4", "PDR1-PDR5", "PDR1-SIT4", "PDR5-SIT4", "PDR1-PDR5-SIT4" ))
+
+summary_dt_group <- ggplot(subset(fig1_dt_avg, conc==40), mapping=aes(x=geno_group, y=avg_dt)) +
+  geom_boxplot(show.legend=F, color="#000000", outlier.size = F) +
+  geom_jitter(height=0, width=0.1, aes(color=mtDNA)) +
+  labs(x="genes with mutations in strain", y="doubling time (min)") +
+  facet_wrap(.~conc, scales="free_y") +
+  theme_linedraw() +
+  theme(panel.grid.minor = element_blank()) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  scale_color_viridis_d(begin=0.3, end=0.8)
+ggsave(file = "fig2C_summary_dt_groups.pdf", summary_dt_group, device="pdf", height = 4, width = 8)
+
+print(TukeyHSD(aov(avg_dt ~ geno_group, data = subset(fig1_dt_avg, conc==20))))
+print(TukeyHSD(aov(avg_dt ~ geno_group, data = subset(fig1_dt_avg, conc==40)))) 
+```
+
+##SUPPLEMENTAL FIGURE S2
+
+```{r figS2A_mtDNA_loss_only}
+anc_strains <- c(4612, 4613, 4614, 4615, 4617, 4618)
+mt_compare_anc <- subset(fig1_dt_avg, strain %in% anc_strains)
+mt_compare_anc$mtgroup <- "ancestor"
+mt_compare_present <- subset(fig1_dt_avg, strain %in% c(4667, 4670, 4671))
+mt_compare_present$mtgroup <- "no mutations"
+mt_compare_loss <- subset(fig1_dt_avg, strain %in% c(4673, 4675))
+mt_compare_loss$mtgroup <- "mtDNA loss"
+mt_compare_strains <- rbind(mt_compare_anc, mt_compare_present, mt_compare_loss)
+mt_compare_strains$mtgroup <- factor(mt_compare_strains$mtgroup, levels = c("ancestor", "no mutations", "mtDNA loss"))
+mt_compare_strains$strain <- as.character(mt_compare_strains$strain)
+mt_compare_strains <- left_join(mt_compare_strains, geno_groups)
+
+mt_loss_dt <- ggplot(subset(mt_compare_strains, conc != 0), mapping=aes(x=mtgroup, y=avg_dt)) +
+  geom_boxplot(show.legend=F, color="#000000", outlier.size = F) +
+  geom_jitter(height=0, width=0.1, show.legend = F) +
+  labs(x="", y="doubling time (min)") +
+  facet_wrap(.~conc, ncol=2, scales="free_y") +
+  theme_linedraw() +
+  theme(panel.grid.minor = element_blank()) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  expand_limits(y=0)
+ggsave(file = "figS2A_mt_loss_dt.pdf", mt_loss_dt, device="pdf", height = 5, width = 2)
+
+print(TukeyHSD(aov(avg_dt ~ mtgroup, data = subset(mt_compare_strains, conc==0))))
+print(TukeyHSD(aov(avg_dt ~ mtgroup, data = subset(mt_compare_strains, conc==20))))
+print(TukeyHSD(aov(avg_dt ~ mtgroup, data = subset(mt_compare_strains, conc==40)))) 
+```
+
+```{r figS2B_cnv}
+cnv_data <- read.delim("caf_cnv_1000bp.txt")
+cnv_plots <- ggplot() + 
+  geom_jitter(data=cnv_data,
+              aes(x=pos, y=cnv, shape='1',size='0.25',                  
+                  color = ifelse(chr %% 2 == 0, "A", "B"),
+                  fill = ifelse(chr %% 2 == 0, "A", "B")),
+                  alpha = 0.5, show.legend=F) +
+  scale_color_manual(name = NULL, values=c("A"='#33b4ff',"B"='#0072b2')) +
+  scale_fill_manual(name = NULL, values = c("A"='#33b4ff',"B"='#0072b2')) +
+  xlab("genome position (1000bp windows)") +
+  ylab("copy number") +
+  ylim(0,5) +
+  facet_wrap(.~clone, nrow=3) +
+    theme_linedraw() +
+  theme(panel.grid.minor = element_blank(), panel.grid.major = element_blank())
+ggsave(file = "figS2B_cnv.pdf", cnv_plots, device="pdf", height = 5, width = 8)
+```
+
+```{r figS2C_PDR1-5-SIT4}
+pdrsit_muts <- subset(fig1_dt_avg, geno_group %in% c("PDR1", "PDR5", "SIT4", "PDR1-PDR5", "PDR1-SIT4", "PDR5-SIT4", "PDR1-PDR5-SIT4"))
+summary_dt_group_P15S <- ggplot(subset(pdrsit_muts, conc==40), mapping=aes(x=geno_group, y=avg_dt)) +
+  geom_boxplot(show.legend=F, color="#000000", outlier.size = F) +
+  geom_jitter(height=0, width=0.1, aes(color=mtDNA)) +
+  labs(x="genes with mutations in strain", y="doubling time (min)") +
+  facet_wrap(.~conc, scales="free_y") +
+  theme_linedraw() +
+  theme(panel.grid.minor = element_blank()) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  scale_color_viridis_d(begin=0.3, end=0.8) +
+  ylim(0,1800)
+ggsave(file = "figS2C_summary_dt_groups_P15S.pdf", summary_dt_group_P15S, device="pdf", height = 3.2, width = 4.5)
+
+print(TukeyHSD(aov(avg_dt ~ geno_group, data = subset(pdrsit_muts, conc==40)))) 
+```
+
+##FIGURE 3
+
+```{r arrange_PDR1-3}
+plate_input <- read.delim("tableS10_pdr1-3.txt", header=FALSE)
+plate_headers <- plate_input %>% slice(1:4) 
+plate_data <- plate_input %>% slice(-(1:4)) 
+plate_time <- plate_data %>% pull(1) 
+plate_time <- as.numeric(plate_time) 
+plate_length <- length(plate_time)
+all_data=data.frame()
+col_iter <- c(2:ncol(plate_data))
+for (iter in col_iter) {
+  col_num <- iter
+  well_strain <- plate_headers[1,col_num] 
+  strain_ls <- rep(well_strain, plate_length) 
+  well_geno <- plate_headers[2,col_num] 
+  geno_ls <- rep(well_geno, plate_length) 
+  well_rep <- plate_headers[3,col_num] 
+  rep_ls <- rep(well_rep, plate_length) 
+  rep_ls <- as.numeric(rep_ls) 
+  well_cond <- plate_headers[4,col_num]
+  cond_ls <- rep(well_cond, plate_length) 
+  cond_ls <- as.numeric(cond_ls) 
+  od_ls <- plate_data[,col_num]
+  od_ls <- as.numeric(od_ls)
+  well_data <- data.frame(plate_time, od_ls, strain_ls, geno_ls, rep_ls, cond_ls) 
+  all_data <- rbind(all_data, well_data)
+  iter <- iter+1
+}
+pdr13_data <- all_data %>% rename(time=plate_time, dens=od_ls, strain=strain_ls, genotype=geno_ls, repl=rep_ls, cond=cond_ls)
+pdr13_data$genotype <- factor(pdr13_data$genotype , levels=c("WT", "PDR1 G280A", "PDR1 L1056H", "PDR1 F749I", "PDR3 T949A")) #set order
+levels(pdr13_data$genotype) <- c("wt", "Pdr1 G280A", "Pdr1 L1056H", "Pdr1 F749I", "Pdr3 T949A")
+
+up_bound_ls <- seq(from=1, to=0.15, by=-0.01)
+
+pdr13_linfits = data.frame()
+for (up_bound in up_bound_ls) { 
+  this_linfit <- pdr13_data %>% 
+    group_by(strain, genotype, repl, cond) %>% 
+    filter(dens>0.13 & dens<up_bound) %>% 
+    do(mod_lin = summary(lm(log2(dens) ~ time, data = .))) %>% 
+    mutate(intercept = mod_lin$coefficients[1], 
+           slope = mod_lin$coefficients[2],
+           Rsq = mod_lin$r.squared,
+           doubling_time = log(2)/mod_lin$coefficients[2],
+           upper_bound = up_bound) %>% 
+    select(-mod_lin)
+  pdr13_linfits <- rbind(pdr13_linfits, this_linfit)
+  up_bound <- up_bound+1
+}
+pdr13_cutoff_linfit <- pdr13_linfits %>%
+  as.data.frame() %>%
+  filter(Rsq > 0.85) #set Rsq
+pdr13_best_linfit <- pdr13_cutoff_linfit %>%
+  as.data.frame() %>%
+  group_by(strain, genotype, repl, cond) %>% 
+  filter(upper_bound == max(upper_bound))
+pdr13_best_linfit$doubling_time <- pdr13_best_linfit$doubling_time*60 
+```
+
+```{r fig3A_PDR1-3_dt}
+pdr13_dt <- ggplot(data=pdr13_best_linfit, mapping=aes(x=genotype, y=doubling_time)) +
+  geom_boxplot(aes(fill=genotype), show.legend=F, color="#000000", size=0.5, alpha=0.75) +
+  geom_jitter(show.legend=F, height=0, width=0.2) +
+  labs(x="", y="doubling time (min)") +
+  facet_wrap(.~cond, scales="free_y") +
+  theme_linedraw() +
+  theme(panel.grid.minor = element_blank()) +
+  expand_limits(y=0) +
+  scale_fill_manual(values=c("gray", "#ff7e01", "#ff7e01", "#ff7e01", "#e6d251")) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+ggsave(file = "pdr1-3_dt.pdf", pdr13_dt, device="pdf", height = 3.5, width = 6)
+
+print(TukeyHSD(aov(doubling_time ~ genotype, data = subset(pdr13_best_linfit, cond==0)))) #anova tests
+print(TukeyHSD(aov(doubling_time ~ genotype, data = subset(pdr13_best_linfit, cond==20)))) #anova tests
+print(TukeyHSD(aov(doubling_time ~ genotype, data = subset(pdr13_best_linfit, cond==40)))) #anova tests
+```
+
+```{r arrange_CRISPR_strains}
+plate_input <- read.delim("tableS14_crispr.txt", header=FALSE)
+plate_headers <- plate_input %>% slice(1:4) 
+plate_data <- plate_input %>% slice(-(1:4)) 
+plate_time <- plate_data %>% pull(1) 
+plate_time <- as.numeric(plate_time) 
+plate_length <- length(plate_time)
+all_data=data.frame()
+col_iter <- c(2:ncol(plate_data))
+for (iter in col_iter) {
+  col_num <- iter
+  well_strain <- plate_headers[2,col_num] 
+  strain_ls <- rep(well_strain, plate_length) 
+  well_geno <- plate_headers[1,col_num] 
+  geno_ls <- rep(well_geno, plate_length) 
+  well_rep <- plate_headers[4,col_num] 
+  rep_ls <- rep(well_rep, plate_length) 
+  rep_ls <- as.numeric(rep_ls) 
+  well_cond <- plate_headers[3,col_num]
+  cond_ls <- rep(well_cond, plate_length) 
+  cond_ls <- as.numeric(cond_ls) 
+  od_ls <- plate_data[,col_num]
+  od_ls <- as.numeric(od_ls)
+  well_data <- data.frame(plate_time, od_ls, strain_ls, geno_ls, rep_ls, cond_ls) 
+  all_data <- rbind(all_data, well_data)
+  iter <- iter+1
+}
+crispr_data <- all_data %>% rename(time=plate_time, dens=od_ls, strain=strain_ls, genotype=geno_ls, repl=rep_ls, cond=cond_ls)
+
+up_bound_ls <- seq(from=1, to=0.15, by=-0.01)
+
+crispr_linfits = data.frame()
+for (up_bound in up_bound_ls) { 
+  this_linfit <- crispr_data %>% 
+    group_by(strain, genotype, repl, cond) %>% 
+    filter(dens>0.13 & dens<up_bound) %>% 
+    do(mod_lin = summary(lm(log2(dens) ~ time, data = .))) %>% 
+    mutate(intercept = mod_lin$coefficients[1], 
+           slope = mod_lin$coefficients[2],
+           Rsq = mod_lin$r.squared,
+           doubling_time = log(2)/mod_lin$coefficients[2],
+           upper_bound = up_bound) %>% 
+    select(-mod_lin)
+  crispr_linfits <- rbind(crispr_linfits, this_linfit)
+  up_bound <- up_bound+1
+}
+crispr_cutoff_linfit <- crispr_linfits %>%
+  as.data.frame() %>%
+  filter(Rsq > 0.85) #set Rsq
+crispr_best_linfit <- crispr_cutoff_linfit %>%
+  as.data.frame() %>%
+  group_by(strain, genotype, repl, cond) %>% 
+  filter(upper_bound == max(upper_bound))
+crispr_best_linfit$doubling_time <- crispr_best_linfit$doubling_time*60 
+```
+
+```{r fig3C_YRR1_T699P}
+yrr1_best_linfit <- subset(crispr_best_linfit, genotype %in% c("YRR1", "YRR1-T699P"))
+yrr1_best_linfit$genotype <- factor(yrr1_best_linfit$genotype , levels=c("YRR1", "YRR1-T699P")) #set order
+
+yrr1_dt_graph <- ggplot(data=yrr1_best_linfit,
+                            mapping=aes(x=genotype, y=doubling_time)) +
+  geom_boxplot(show.legend=F, size=0.5, color="black", aes(fill=genotype)) +
+  geom_jitter(width=0.1, height=0) +
+  facet_wrap(.~cond, scales="free_y") +
+  labs(x="", y="doubling time (min)") +
+  scale_fill_manual(values=c("gray", "#C0369D")) +
+  theme_linedraw() +
+  theme(panel.grid.minor = element_blank()) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  expand_limits(y=0)
+ggsave(file = "fig3C_yrr1_dt_graph.pdf", yrr1_dt_graph, device="pdf", height = 3.5, width = 4)
+
+#calculate stats for each dose
+print(t.test(doubling_time ~ genotype, data=subset(yrr1_best_linfit, cond==0))) #0.1299 ns
+print(t.test(doubling_time ~ genotype, data=subset(yrr1_best_linfit, cond==20))) #0.003227 **
+print(t.test(doubling_time ~ genotype, data=subset(yrr1_best_linfit, cond==40))) #0.005953 **
+```
+
+##SUPPLEMENTAL FIGURE S3
+
+```{r format_fungicure_data}
+fc_input <- read.table("tableS8_fungicuregrowth.txt", sep="\t", header=FALSE)
+
+plate_headers <- fc_input %>% slice(1:3) 
+plate_data <- fc_input %>% slice(-(1:3)) 
+plate_time <- plate_data %>% pull(1) 
+plate_time <- as.numeric(plate_time)
+plate_length <- length(plate_time)
+all_data=data.frame()
+col_iter <- c(2:ncol(plate_data))
+for (iter in col_iter) {
+  col_num <- iter
+  well_strain <- plate_headers[1,col_num] 
+  strain_ls <- rep(well_strain, plate_length) 
+  well_cond <- plate_headers[2,col_num] 
+  cond_ls <- rep(well_cond, plate_length) 
+  cond_ls <- as.numeric(cond_ls) 
+  well_repl <- plate_headers[3,col_num] 
+  repl_ls <- rep(well_repl, plate_length) 
+  repl_ls <- as.numeric(repl_ls) 
+  od_ls <- plate_data[,col_num]
+  od_ls <- as.numeric(od_ls)
+  well_data <- data.frame(plate_time, od_ls, strain_ls, cond_ls, repl_ls) 
+  all_data <- rbind(all_data, well_data)
+  iter <- iter+1
+}
+fc_all_data <- all_data %>% rename(time=plate_time, dens=od_ls, strain=strain_ls, cond=cond_ls, repl=repl_ls)
+
+#calculate doubling times
+up_bound_ls <- seq(from=1, to=0.15, by=-0.01) 
+fc_all_linfits = data.frame()
+for (up_bound in up_bound_ls) { 
+  this_linfit <- fc_all_data %>% 
+    group_by(strain, cond, repl) %>%  
+    filter(dens>0.13 & dens<up_bound) %>% 
+    do(mod_lin = summary(lm(log2(dens) ~ time, data = .))) %>% 
+    mutate(intercept = mod_lin$coefficients[1], 
+           slope = mod_lin$coefficients[2],
+           Rsq = mod_lin$r.squared,
+           doubling_time = log(2)/mod_lin$coefficients[2],
+           upper_bound = up_bound) %>% 
+    select(-mod_lin)
+  fc_all_linfits <- rbind(fc_all_linfits, this_linfit)
+  up_bound <- up_bound+1
+}
+
+#keep if rsq>0.85, then take the fit that used the highest upper bound
+fc_cutoff_linfit <- fc_all_linfits %>%
+  as.data.frame() %>%
+  filter(Rsq > 0.85)
+fc_best_linfit <- fc_cutoff_linfit %>%
+  as.data.frame() %>%
+  group_by(strain, cond) %>% 
+  filter(upper_bound == max(upper_bound))
+fc_best_linfit$doubling_time <- fc_best_linfit$doubling_time*60 #convert hours to minutes
+
+#add metadata
+fc_best_linfit$strain <- as.character(fc_best_linfit$strain)
+fc_best_linfit <- left_join(fc_best_linfit, geno_groups, by="strain")
+fc_best_linfit$azole_mut <- factor(fc_best_linfit$azole_mut, levels=c("ancestor", "none", "other", "PDR1/5"))
+
+#calculate average doubling time for each clone
+fc_dt_avg <- fc_best_linfit %>%
+  group_by(strain, cond, geno_group, mtDNA, azole_mut) %>%
+  summarize_at(vars(doubling_time), list(avg_dt=mean, stdev=sd, n=length)) %>%
+  mutate(stderr=stdev/sqrt(as.numeric(n)))
+fc_dt_avg$azole_mut <- factor(fc_dt_avg$azole_mut, levels=c("ancestor", "none", "other", "PDR1/5"))
+```
+
+```{r figS3A_fc_caf_corr}
+rsq <- function(x, y) summary(lm(y~x))$r.squared
+fc_dt_avg$strain <- as.character(fc_dt_avg$strain)
+
+fc4_caf20_corr <- left_join(subset(fig1_dt_avg, conc==20), subset(fc_dt_avg, cond==4.5), by="strain")
+fc4_caf20_corr$maxd <- factor(fc4_caf20_corr$maxd , levels=c("0", "10", "20", "30", "40"))
+fc9_caf20_corr <- left_join(subset(fig1_dt_avg, conc==20), subset(fc_dt_avg, cond==9), by="strain")
+fc9_caf20_corr$maxd <- factor(fc9_caf20_corr$maxd , levels=c("0", "10", "20", "30", "40"))
+fc4_caf40_corr <- left_join(subset(fig1_dt_avg, conc==40), subset(fc_dt_avg, cond==4.5), by="strain")
+fc4_caf40_corr$maxd <- factor(fc4_caf40_corr$maxd , levels=c("0", "10", "20", "30", "40"))
+fc9_caf40_corr <- left_join(subset(fig1_dt_avg, conc==40), subset(fc_dt_avg, cond==9), by="strain")
+fc9_caf40_corr$maxd <- factor(fc9_caf40_corr$maxd , levels=c("0", "10", "20", "30", "40"))
+
+azole_caff_corr <- 
+  
+ggsave(file = "figS3A_azole_caff_corr.pdf", azole_caff_corr, device="pdf", height = 3, width = 3.5)
+
+rsq(fc4_caf20_corr$avg_dt.x, fc4_caf20_corr$avg_dt.y)
+rsq(fc9_caf20_corr$avg_dt.x, fc9_caf20_corr$avg_dt.y)
+rsq(fc4_caf40_corr$avg_dt.x, fc4_caf40_corr$avg_dt.y)
+rsq(fc9_caf40_corr$avg_dt.x, fc9_caf40_corr$avg_dt.y)
+```
+
+```{r figS3B_fc_caf_mutations_curves}
+fc_avg_data <- fc_all_data %>%
+  group_by(time, strain, cond) %>%
+  summarise_at(vars(dens), list(dens = mean))
+
+fc_avg_data$strain <- as.character(fc_avg_data$strain)
+fc_avg_data <- left_join(fc_avg_data, geno_groups, by="strain")
+fc_avg_data$azole_mut <- factor(fc_avg_data$azole_mut, levels=c("ancestor", "none", "other", "PDR1/5")) #set order
+
+fc_curves <- ggplot(data=fc_avg_data,
+       aes(x=time, y=dens, color=azole_mut)) + #plot od/time by variant
+  geom_point(size=0.01, alpha=0.25, show.legend=F) +
+  scale_y_continuous(trans = "log2",n.breaks = 15,
+                     labels = function(x) ifelse(x == 0, "0", x)) + #make log2 yaxis
+  labs(x="time (hours)", y="optical density (600nm)") +
+  facet_grid(cond~azole_mut) + #make a different plot in a column for each concentration
+  scale_color_manual(values=c("gray", "darkgray", "black", "#ff7e01")) + 
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "figS3B_fc_curves.pdf", fc_curves, device="pdf", height = 3.5, width = 5)
+```
+
+```{r format_S3D_PDR1_diploid}
+plate_input <- read.delim("tableS9_pdr1diploids.txt", sep="\t", header=FALSE)
+plate_headers <- plate_input %>% slice(1:4) #the first 4 rows are header
+plate_data <- plate_input %>% slice(-(1:4)) #everything not the first 4 rows is data
+plate_time <- plate_data %>% pull(1) #take col 1 as a vector
+plate_time <- as.numeric(plate_time) #treat as numbers not strings
+plate_length <- length(plate_time)
+caf_pdr1_data=data.frame()
+col_iter <- c(2:ncol(plate_data))
+for (iter in col_iter) {
+  col_num <- iter
+  well_geno <- plate_headers[1,col_num] 
+  geno_ls <- rep(well_geno, plate_length) 
+  well_strain <- plate_headers[2,col_num] 
+  strain_ls <- rep(well_strain, plate_length) 
+  well_cond <- plate_headers[3,col_num] 
+  cond_ls <- rep(well_cond, plate_length)
+  cond_ls <- as.numeric(cond_ls) 
+  well_repl <- plate_headers[4,col_num] 
+  repl_ls <- rep(well_repl, plate_length) 
+  repl_ls <- as.numeric(repl_ls) 
+  od_ls <- plate_data[,col_num]
+  od_ls <- as.numeric(od_ls)
+  well_data <- data.frame(plate_time, od_ls, geno_ls, strain_ls, cond_ls, repl_ls) 
+  caf_pdr1_data <- rbind(caf_pdr1_data, well_data)
+  iter <- iter+1
+}
+caf_pdr1_data <- caf_pdr1_data %>% rename(time=plate_time, dens=od_ls, genotype=geno_ls, strain=strain_ls, cond=cond_ls, repl=repl_ls)
+
+up_bound_ls <- seq(from=1, to=0.15, by=-0.01)
+caf_pdr1_linfits = data.frame()
+for (up_bound in up_bound_ls) { 
+  this_linfit <- caf_pdr1_data %>% 
+    group_by(strain, genotype, cond, repl) %>%  
+    filter(dens>0.13 & dens<up_bound) %>% 
+    do(mod_lin = summary(lm(log2(dens) ~ time, data = .))) %>% 
+    mutate(intercept = mod_lin$coefficients[1], 
+           slope = mod_lin$coefficients[2],
+           Rsq = mod_lin$r.squared,
+           doubling_time = log(2)/mod_lin$coefficients[2],
+           upper_bound = up_bound) %>% 
+    select(-mod_lin)
+  caf_pdr1_linfits <- rbind(caf_pdr1_linfits, this_linfit)
+  up_bound <- up_bound+1
+}
+caf_pdr1_linfits <- caf_pdr1_linfits %>%
+  as.data.frame() %>%
+  filter(Rsq > 0.85)
+caf_pdr1_bestlinfit <- caf_pdr1_linfits %>%
+  as.data.frame() %>%
+  group_by(strain, genotype, cond, repl) %>%
+  filter(upper_bound == max(upper_bound))
+caf_pdr1_bestlinfit$doubling_time <- caf_pdr1_bestlinfit$doubling_time*60
+```
+
+```{r figS3D_curves_caf_PDR1_GOF}
+caf_pdr1_data$genotype <- factor(caf_pdr1_data$genotype, levels=c("WT", "PDR1-G280A/+", "PDR1-L1056H/+")) #set order
+
+pdr1_2n_curves <- ggplot(data=caf_pdr1_data,
+       aes(x=time, y=dens, color=strain)) + #plot od/time by variant
+  geom_point(size=0.2, alpha=0.25, show.legend=F) +
+  scale_y_continuous(trans = "log2",n.breaks = 15,
+                     labels = function(x) ifelse(x == 0, "0", x)) + #make log2 yaxis
+  labs(x="time (hours)", y="optical density") +
+  scale_color_manual(values=c("gray", "#ff7e01", "#ff7e01")) +
+  facet_grid(cond~genotype) + #make a different plot for each media
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "pdr1_2n_curves.pdf", pdr1_2n_curves, device="pdf", height = 2.5, width = 3.7)
+```
+
+```{r figS3D_dt_caf_PDR1_GOF}
+caf_pdr1_bestlinfit$strain <- factor(caf_pdr1_bestlinfit$genotype, levels=c("WT", "PDR1-G280A/+", "PDR1-L1056H/+")) 
+
+pdr1_2n_dt <- ggplot(data=subset(caf_pdr1_bestlinfit, cond!=40), mapping=aes(x=strain, y=doubling_time)) +
+  geom_boxplot(show.legend=F, aes(fill=strain), color="#000000", outlier.size = F) +
+  geom_jitter(height=0, width=0.1) +
+  labs(x="", y="doubling time (min)") +
+  facet_wrap(.~cond, scales="free_y") +
+  theme_linedraw() +
+  theme(panel.grid.minor = element_blank()) +
+  scale_fill_manual(values=c("gray", "#ff7e01", "#ff7e01")) +
+  expand_limits(y=0) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))
+ggsave(file = "pdr1_2n_dt.pdf", pdr1_2n_dt, device="pdf", height = 3.5, width = 2.7)
+
+print(TukeyHSD(aov(doubling_time ~ strain, data = subset(caf_pdr1_bestlinfit, cond==0)))) #anova tests
+print(TukeyHSD(aov(doubling_time ~ strain, data = subset(caf_pdr1_bestlinfit, cond==20)))) #anova tests
+```
+
+```{r figS3E_PDR1-3_growth}
+pdr13_growth <- ggplot(data=subset(pdr13_data, genotype %in% c("wt", "Pdr1 F749I", "Pdr3 T949A")),
+       aes(x=time, y=dens)) + 
+  geom_point(aes(color=genotype), size=0.01, alpha=0.25, show.legend=F) +
+  scale_y_continuous(trans = "log2",n.breaks = 15,
+                     labels = function(x) ifelse(x == 0, "0", x)) + 
+  labs(x="time (hours)", y="optical density (600nm)") +
+  facet_grid(cond~genotype) + 
+  theme_linedraw() +
+  scale_color_manual(values=c("gray", "#ff7e01", "#e6d251")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "figS3E_pdr1-3_growth.pdf", pdr13_growth, device="pdf", height = 3.5, width = 4)
+```
+
+```{r figS3G_yrr1_curves}
+yrr1_data <- subset(crispr_data, genotype %in% c("YRR1", "YRR1-T699P"))
+yrr1_data$genotype <- factor(yrr1_data$genotype , levels=c("YRR1", "YRR1-T699P")) 
+
+yrr1_curves <- ggplot(data=yrr1_data,
+       aes(x=time, y=dens)) + #plot od/time by variant
+  geom_point(aes(color=genotype), stroke=NA, alpha=0.25, size=0.5, show.legend=F) +
+  scale_y_continuous(trans = "log2",n.breaks = 15, labels = function(x) ifelse(x == 0, "0", x)) + 
+  labs(x="time (hours)", y="optical density (600nm)") +
+  scale_color_manual(values=c("gray", "#C0369D")) +
+  facet_grid(cond~genotype) +
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "figS3G_yrr1_curves.pdf", yrr1_curves, device="pdf", height = 3.2, width = 2.6)
+```
+
+```{r figS3H_YRR1_T699P_diploid}
+yrr1dip_data <- subset(crispr_data, genotype %in% c("YRR1/+", "YRR1-T699P/+"))
+yrr1dip_data$genotype <- factor(yrr1dip_data$genotype , levels=c("YRR1/+", "YRR1-T699P/+")) #set order
+
+yrr1_dip_curves <- ggplot(data=yrr1dip_data,
+       aes(x=time, y=dens)) + #plot od/time by variant
+  geom_point(aes(color=genotype), stroke=NA, alpha=0.25, size=0.5, show.legend=F) +
+  scale_color_manual(values=c("gray", "#C0369D")) +
+  scale_y_continuous(trans = "log2",n.breaks = 15, labels = function(x) ifelse(x == 0, "0", x)) + 
+  labs(x="time (hours)", y="optical density (600nm)") +
+  facet_grid(cond~genotype) +
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "figS3H_yrr1_dip_curves.pdf", yrr1_dip_curves, device="pdf", height = 3.2, width = 2.6)
+
+yrr1dip_best_linfit <- subset(crispr_best_linfit, genotype %in% c("YRR1/+", "YRR1-T699P/+"))
+yrr1dip_best_linfit$genotype <- factor(yrr1dip_best_linfit$genotype , levels=c("YRR1/+", "YRR1-T699P/+")) #set order
+
+yrr1dip_dt_graph <- ggplot(data=subset(yrr1dip_best_linfit, cond != 20),
+                            mapping=aes(x=genotype, y=doubling_time)) +
+  geom_boxplot(show.legend=F, size=0.5, color="black", aes(fill=genotype)) +
+  geom_jitter(width=0.1, height=0) +
+  facet_wrap(.~cond, scales="free_y") +
+  labs(x="", y="doubling time (min)") +
+  scale_fill_manual(values=c("gray", "#C0369D")) +
+  theme_linedraw() +
+  theme(panel.grid.minor = element_blank()) +
+  expand_limits(y=0)
+ggsave(file = "figS3H_yrr1dip_dt_graph.pdf", yrr1dip_dt_graph, device="pdf", height = 2.6, width = 3.5)
+
+print(t.test(doubling_time ~ genotype, data=subset(yrr1dip_best_linfit, cond==0))) 
+print(t.test(doubling_time ~ genotype, data=subset(yrr1dip_best_linfit, cond==10))) 
+print(t.test(doubling_time ~ genotype, data=subset(yrr1dip_best_linfit, cond==20))) 
+```
+
+##FIGURE 4
+
+```{r deletion_caffeine_arrange}
+plate_input <- read.delim("tableS12_deletions.txt", sep="\t", header=FALSE)
+plate_headers <- plate_input %>% slice(1:3) 
+plate_data <- plate_input %>% slice(-(1:3)) 
+plate_time <- plate_data %>% pull(1)
+plate_time <- as.numeric(plate_time)
+plate_length <- length(plate_time)
+all_data=data.frame()
+col_iter <- c(2:ncol(plate_data))
+for (iter in col_iter) {
+  col_num <- iter
+  well_geno <- plate_headers[1,col_num] 
+  geno_ls <- rep(well_geno, plate_length) 
+  well_cond <- plate_headers[2,col_num] 
+  cond_ls <- rep(well_cond, plate_length)
+  cond_ls <- as.numeric(cond_ls) 
+  well_repl <- plate_headers[3,col_num] 
+  repl_ls <- rep(well_repl, plate_length) 
+  repl_ls <- as.numeric(repl_ls) 
+  od_ls <- plate_data[,col_num]
+  od_ls <- as.numeric(od_ls)
+  well_data <- data.frame(plate_time, od_ls, geno_ls, cond_ls, repl_ls) 
+  all_data <- rbind(all_data, well_data)
+  iter <- iter+1
+}
+delset_caf_data <- all_data %>% rename(time=plate_time, dens=od_ls, genotype=geno_ls, cond=cond_ls, repl=repl_ls)
+delset_caf_data$genotype <- factor(delset_caf_data$genotype, levels=c("wt","ebs1","sit4","sky1", "svf1", "tip41","tom20","usa1"))
+
+#calculate doubling time
+up_bound_ls <- seq(from=1, to=0.15, by=-0.01)
+all_linfits = data.frame()
+for (up_bound in up_bound_ls) { 
+  this_linfit <- delset_caf_data %>% 
+    group_by(genotype, cond, repl) %>%  
+    filter(dens>0.13 & dens<up_bound) %>% 
+    do(mod_lin = summary(lm(log2(dens) ~ time, data = .))) %>% 
+    mutate(intercept = mod_lin$coefficients[1], 
+           slope = mod_lin$coefficients[2],
+           Rsq = mod_lin$r.squared,
+           doubling_time = log(2)/mod_lin$coefficients[2],
+           upper_bound = up_bound) %>% 
+    select(-mod_lin)
+  all_linfits <- rbind(all_linfits, this_linfit)
+  up_bound <- up_bound+1
+}
+cutoff_linfit <- all_linfits %>%
+  as.data.frame() %>%
+  filter(Rsq > 0.85)
+deletion_best_linfit <- cutoff_linfit %>%
+  as.data.frame() %>%
+  group_by(genotype, cond, repl) %>% 
+  filter(upper_bound == max(upper_bound))
+deletion_best_linfit$doubling_time <- deletion_best_linfit$doubling_time*60 
+```
+
+```{r fig4A_deletion_caffeine_dt}
+deletion_dt_graph <- ggplot(data=subset(deletion_best_linfit, cond != 40),
+                            mapping=aes(x=genotype, y=doubling_time)) +
+  geom_boxplot(show.legend=F, size=0.5, color="black", fill="white") +
+  geom_jitter(width=0.1, height=0) +
+  labs(x="", y="Doubling time (min)") +
+  facet_wrap(.~cond, scales="free_y") +
+  labs(x="", y="doubling time (min)") +
+  theme_linedraw() +
+  theme(panel.grid.minor = element_blank()) +
+  expand_limits(y=0) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))
+ggsave(file = "fig4A_deletionset_dt_graph.pdf", deletion_dt_graph, device="pdf", height = 3, width = 7)
+
+print(TukeyHSD(aov(doubling_time ~ genotype, data = subset(deletion_best_linfit, cond==0))))
+print(TukeyHSD(aov(doubling_time ~ genotype, data = subset(deletion_best_linfit, cond==20))))
+print(TukeyHSD(aov(doubling_time ~ genotype, data = subset(deletion_best_linfit, cond==40))))
+```
+
+```{r fig4B_deletion_rapamycin}
+del_rapa_od <- read.delim("tableS13_deletions_rapaOD.txt")
+del_rapa_od$genotype <- factor(del_rapa_od$genotype, levels=c("wt","ebs1","sit4","sky1", "svf1", "tip41","tom20","usa1"))
+
+del_rap_od_graph <- ggplot(del_rapa_od, mapping=aes(x=genotype, y=rapa_growth)) +
+  geom_boxplot(show.legend=F, size=0.5, color="black", fill="white", outlier.size = F) +
+  geom_jitter(height=0, width=0.1) +
+  labs(x="", y="growth in 5nM rapamycin relative to 0nM rapamycin") +
+  theme_linedraw() +
+  theme(panel.grid.minor = element_blank()) +
+  ylim(min=0, max=1) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5))
+ggsave(file = "fig4B_del_rapa_od.pdf", del_rap_od_graph, device="pdf", height = 2.8, width = 3.5)
+
+print(TukeyHSD(aov(rapa_growth ~ genotype, data = del_rapa_od)))
+```
+
+##SUPPLEMENTAL FIGURE S4
+
+```{r figS4A_rapamycin_caf_corr}
+rsq <- function(x, y) summary(lm(y~x))$r.squared
+
+rapa_mic <- read.delim("tableS11_rapaOD.txt", header=T)
+rapa_mic <- select(rapa_mic, !evol)
+rapa_mic$strain <- as.character(rapa_mic$strain)
+
+rapa_caf_corr_20 <- left_join(subset(fig1_dt_avg, conc==20), rapa_mic)
+rapa_caf_corr_40 <- left_join(subset(fig1_dt_avg, conc==40), rapa_mic)
+rapa_caf_corr_0 <- left_join(subset(fig1_dt_avg, conc==0), rapa_mic)
+rapa_caf_corr_20$maxd <- factor(rapa_caf_corr_20$maxd , levels=c("0", "10", "20", "30", "40"))
+rapa_caf_corr_40$maxd <- factor(rapa_caf_corr_40$maxd , levels=c("0", "10", "20", "30", "40"))
+rapa_caf_corr_0$maxd <- factor(rapa_caf_corr_0$maxd , levels=c("0", "10", "20", "30", "40"))
+
+rapa_caff_corr <- ggplot(data=rapa_caf_corr_20, aes(y=frac_grow_rapa, x=avg_dt)) +
+  geom_smooth(method=lm, se=T, color="black", fill="#d3d3d3") +
+  geom_errorbar(aes(ymin=frac_grow_rapa - sterr_rapa, ymax=frac_grow_rapa + sterr_rapa), width=0, color="lightgray") +
+  geom_errorbarh(aes(xmin=avg_dt - stderr, xmax=avg_dt + stderr), width=0, color="lightgray") +
+  geom_point(aes(color=evol)) +
+  ylab("OD in 5nM rapamycin relative to 0nM rapamycin") +
+  xlab("Doubling time in 20mM caffeine") +
+  scale_color_manual(values=c("lightgray", "black")) + 
+  scale_x_log10() +
+  theme_linedraw() +
+  theme(panel.grid.minor = element_blank())
+ggsave(file = "figS4A_rapa_caff_corr.pdf", rapa_caff_corr, device="pdf", height = 3, width = 5)
+
+rsq(rapa_caf_corr_0$avg_dt, rapa_caf_corr_0$frac_grow_rapa)
+rsq(rapa_caf_corr_20$avg_dt, rapa_caf_corr_20$frac_grow_rapa)
+rsq(rapa_caf_corr_40$avg_dt, rapa_caf_corr_40$frac_grow_rapa)
+```
+
+```{r figS4B_deletion_caffeine_curves}
+deletion_curves <- ggplot(data=delset_caf_data,
+       aes(x=time, y=dens)) + #plot od/time by variant
+  geom_point(color="black", size=0.01, alpha=0.2) +
+  scale_y_continuous(trans = "log2",n.breaks = 15, labels = function(x) ifelse(x == 0, "0", x)) + 
+  labs(x="time (hours)", y="optical density (600nm)") +
+  facet_grid(cond~genotype) +
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "deletion_set_curves.pdf", deletion_curves, device="pdf", height = 3.5, width = 9)
+```
+
+##FIGURE 5
+#run arrange_crispr_strains chunk before running these chunks
+
+```{r fig5B_TIP41SX_caffeine_dt}
+tip41SX_best_linfit <- subset(crispr_best_linfit, genotype %in% c("TIP41", "TIP41-S161X"))
+
+tip41SX_dt_graph <- ggplot(data=tip41SX_best_linfit,
+                            mapping=aes(x=genotype, y=doubling_time)) +
+  geom_boxplot(show.legend=F, size=0.5, color="black", aes(fill=genotype)) +
+  geom_jitter(width=0.1, height=0) +
+  facet_wrap(.~cond, scales="free_y") +
+  labs(x="", y="doubling time (min)") +
+  theme_linedraw() +
+  scale_fill_manual(values=c("gray", "#da1c5c")) +
+  theme(panel.grid.minor = element_blank()) +
+  expand_limits(y=0)
+ggsave(file = "fig5B_tip41SX_dt_graph.pdf", tip41SX_dt_graph, device="pdf", height = 2.5, width = 3)
+
+print(t.test(doubling_time ~ genotype, data=subset(tip41SX_best_linfit, cond==0))) 
+print(t.test(doubling_time ~ genotype, data=subset(tip41SX_best_linfit, cond==20))) 
+```
+
+```{r fig5C_CRISPR Rapamycin OD}
+crispr_rapa_od <- read.delim("tableS13_crispr_rapaOD.txt")
+tor_crispr_list <- c("TIP41", "TIP41-S161X", "SIT4", "SIT4-T95R", "SKY1", "SKY1-E596K")
+crispr_rapa_od$genotype <- factor(crispr_rapa_od$genotype, levels=tor_crispr_list)
+
+crispr_rapa_od_graph <- ggplot(crispr_rapa_od, mapping=aes(x=genotype, y=rapa_growth)) +
+  geom_boxplot(show.legend=F, color="#000000", aes(fill=genotype), outlier.size = F) +
+  geom_jitter(height=0, width=0.1) +
+  labs(x="", y="growth in 5nM rapamycin relative to 0nM rapamycin") +
+  theme_linedraw() +
+  facet_wrap(.~.) +
+  scale_fill_manual(values=c("gray", "#da1c5c", "gray", "#da1c5c", "gray", "#da1c5c")) +
+  theme(panel.grid.minor = element_blank()) +
+  ylim(c(0, 0.5)) 
+ggsave(file = "fig5C_crispr_rapa_od.pdf", crispr_rapa_od_graph, device="pdf", height = 1.8, width = 3)
+
+print(t.test(rapa_growth ~ genotype, data=subset(crispr_rapa_od, genotype %in% c("TIP41", "TIP41-S161X")))) #0.0093 **
+print(t.test(rapa_growth ~ genotype, data=subset(crispr_rapa_od, genotype %in% c("SIT4", "SIT4-T95R")))) #0.00709 **
+print(t.test(rapa_growth ~ genotype, data=subset(crispr_rapa_od, genotype %in% c("SKY1", "SKY1-E596K")))) #0.379
+
+```
+
+```{r fig5D_SIT4T95R_caffeine_dt}
+sit4TR_best_linfit <- subset(crispr_best_linfit, genotype %in% c("SIT4", "SIT4-T95R"))
+
+sit4TR_dt_graph <- ggplot(data=sit4TR_best_linfit,
+                            mapping=aes(x=genotype, y=doubling_time)) +
+  geom_boxplot(show.legend=F, size=0.5, color="black", aes(fill=genotype)) +
+  geom_jitter(width=0.1, height=0) +
+  facet_wrap(.~cond, scales="free_y") +
+  labs(x="", y="doubling time (min)") +
+  theme_linedraw() +
+  scale_fill_manual(values=c("gray", "#da1c5c")) +
+  theme(panel.grid.minor = element_blank()) +
+  expand_limits(y=0)
+ggsave(file = "fig5D_sit4TR_dt_graph.pdf", sit4TR_dt_graph, device="pdf", height = 2.5, width = 3)
+
+print(t.test(doubling_time ~ genotype, data=subset(sit4TR_best_linfit, cond==0))) 
+print(t.test(doubling_time ~ genotype, data=subset(sit4TR_best_linfit, cond==20))) 
+```
+
+```{r fig5E_SKY1E596K_caffeine_dt}
+sky1EK_best_linfit <- subset(crispr_best_linfit, genotype %in% c("SKY1", "SKY1-E596K"))
+
+sky1EK_dt_graph <- ggplot(data=sky1EK_best_linfit,
+                            mapping=aes(x=genotype, y=doubling_time)) +
+  geom_boxplot(show.legend=F, size=0.5, color="black", aes(fill=genotype)) +
+  geom_jitter(width=0.1, height=0) +
+  facet_wrap(.~cond, scales="free_y") +
+  labs(x="", y="doubling time (min)") +
+  theme_linedraw() +
+  scale_fill_manual(values=c("gray", "#da1c5c")) +
+  theme(panel.grid.minor = element_blank()) +
+  expand_limits(y=0)
+ggsave(file = "fig5E_sky1EK_dt_graph.pdf", sky1EK_dt_graph, device="pdf", height = 2.5, width = 3)
+
+#get stats at 0 and 20mM 
+print(t.test(doubling_time ~ genotype, data=subset(sky1EK_best_linfit, cond==0))) #0.0031
+print(t.test(doubling_time ~ genotype, data=subset(sky1EK_best_linfit, cond==20))) #9.758e-06
+```
+
+##SUPPLEMENTAL FIGURE S5
+#run arrange_crispr_strains chunk before running these chunks
+
+```{r figS5A_all_caffeine_curves}
+tor_crispr_list <- c("TIP41", "TIP41-S161X", "SIT4", "SIT4-T95R", "SKY1", "SKY1-E596K")
+tor_caf_data <- subset(crispr_data, genotype %in% tor_crispr_list)
+tor_caf_data$genotype <- factor(tor_caf_data$genotype, levels=tor_crispr_list)
+
+tor_caf_curves <- ggplot(data=tor_caf_data,
+       aes(x=time, y=dens, color=genotype)) + #plot od/time by variant
+  geom_point(fill="black", stroke=NA, alpha=0.5, size=0.5, show.legend=F) +
+  scale_y_continuous(trans = "log2",n.breaks = 15, labels = function(x) ifelse(x == 0, "0", x)) + 
+  labs(x="time (hours)", y="optical density (600nm)") +
+  facet_grid(cond~genotype) +
+  scale_color_manual(values=c("gray", "#da1c5c", "gray", "#da1c5c", "gray", "#da1c5c")) +
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "figS5A_tor_caf_curves.pdf", tor_caf_curves, device="pdf", height = 3, width = 8)
+```
+
+```{r figS5B_all_caffeine_dip_curves}
+tor_dip_crispr_list <- c("TIP41/+", "TIP41-S161X/+", "SIT4/+", "SIT4-T95R/+", "SKY1/+", "SKY1-E596K/+")
+tor_dip_caf_data <- subset(crispr_data, genotype %in% tor_dip_crispr_list)
+tor_dip_caf_data$genotype <- factor(tor_dip_caf_data$genotype, levels=tor_dip_crispr_list)
+
+tor_dip_caf_curves <- ggplot(data=tor_dip_caf_data,
+       aes(x=time, y=dens, color=genotype)) + #plot od/time by variant
+  geom_point(fill="black", stroke=NA, alpha=0.5, size=0.5, show.legend=F) +
+  scale_y_continuous(trans = "log2",n.breaks = 15, labels = function(x) ifelse(x == 0, "0", x)) + 
+  labs(x="time (hours)", y="optical density (600nm)") +
+  facet_grid(cond~genotype) +
+  scale_color_manual(values=c("gray", "#da1c5c", "gray", "#da1c5c", "gray", "#da1c5c")) +
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "figS5B_tor_dip_caf_curves.pdf", tor_dip_caf_curves, device="pdf", height = 4, width = 8)
+```
+
+```{r figS5C_all_caffeine_dip_dt}
+tor_dip_crispr_list <- c("TIP41/+", "TIP41-S161X/+", "SIT4/+", "SIT4-T95R/+", "SKY1/+", "SKY1-E596K/+")
+tor_dip_caf_dt <- subset(crispr_best_linfit, genotype %in% tor_dip_crispr_list)
+tor_dip_caf_dt$genotype <- factor(tor_dip_caf_dt$genotype, levels=tor_dip_crispr_list)
+
+tor_dip_caf_dt_graph <- ggplot(data=subset(tor_dip_caf_dt, cond!=20),
+                            mapping=aes(x=genotype, y=doubling_time)) +
+  geom_boxplot(show.legend=F, size=0.5, color="black", aes(fill=genotype)) +
+  geom_jitter(width=0.1, height=0) +
+  facet_wrap(.~cond) +
+  labs(x="", y="doubling time (min)") +
+  scale_fill_manual(values=c("gray", "#da1c5c", "gray", "#da1c5c", "gray", "#da1c5c")) +
+  theme_linedraw() +
+  theme(panel.grid.minor = element_blank()) +
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) +
+  expand_limits(y=0)
+ggsave(file = "figS5C_tor_dip_caf_dt_graph.pdf", tor_dip_caf_dt_graph, device="pdf", height = 3, width = 5)
+
+tor_dip_caf_dt_10 <- subset(tor_dip_caf_dt, cond==10)
+print(t.test(doubling_time ~ genotype, data=subset(tor_dip_caf_dt_10, genotype %in% c("TIP41/+", "TIP41-S161X/+")))) 
+print(t.test(doubling_time ~ genotype, data=subset(tor_dip_caf_dt_10, genotype %in% c("SIT4/+", "SIT4-T95R/+")))) 
+print(t.test(doubling_time ~ genotype, data=subset(tor_dip_caf_dt_10, genotype %in% c("SKY1/+", "SKY1-E596K/+")))) 
+```

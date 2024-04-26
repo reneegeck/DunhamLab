@@ -1,0 +1,9 @@
+gene	citations	count
+PDR1	citation with caffeine	30
+SIT4	citation with caffeine	17
+PDR5	citation with caffeine	16
+SKY1	screen hit with caffeine	7
+other	citation with caffeine	5
+other	screen hit with caffeine	8
+other	citation/screen hit with rapamycin but not caffeine	6
+other	none	22

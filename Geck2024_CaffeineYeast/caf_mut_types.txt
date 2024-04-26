@@ -1,0 +1,7 @@
+mtDNA	type	count
+present	Ty insertion	3
+present	missense only	23
+loss	CNV	1
+loss	Ty insertion	2
+loss	CNV and Ty insertion	1
+loss	missense only	13
