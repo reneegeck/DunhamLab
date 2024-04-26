@@ -1,0 +1,12 @@
+## Caffeine Yeast
+This repository includes the code and files neeed to create figures from Geck et al. 2024.
+
+## Citation
+
+Please cite: 
+
+## Repository overview
+
+The script to generate all figures is yEvo_caffeine_figures_Geck2024.Rmd.
+All other files are called by the script.
+We recommend downloading the entire folder (Geck2024_CaffeineYeast) and running the script with that folder set as the working directory.
