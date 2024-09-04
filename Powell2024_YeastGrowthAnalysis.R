@@ -1,11 +1,13 @@
 #This is analysis for Powell et al. 2024, medRxiv doi 10.1101/2024.04.12.24305393
-#Written by Renee Geck, January 2024
+#Written by Renee Geck, January 2024; updated September 2024
 #____________________________
+
+#If you need to install gcplyr, run the following line:
+#install.packages("gcplyr")
 
 library(ggplot2)
 library(dplyr)
 library(gcplyr)
-setwd("~/Library/CloudStorage/Dropbox/Dunham Lab/G6PD/14 Powell-Skaar Collab/230926_Dagua")
 
 #______________________________
 ##PART 1: Format the input data
@@ -41,13 +43,13 @@ for (iter in col_iter) {
 }
 all_data <- all_data %>% rename(time=plate_time, dens=od_ls, strain=strain_ls, name=name_ls, variant=var_ls, cond=cond_ls, biolrep=repb_ls, techrep=rept_ls)
 all_data$variant <- factor(all_data$variant, levels=c("reference", "c.376A>G", "c.337G>A", "c.[202G>A;376A>G]", "c.563C>T", "c.592C>T", "none",
-                                              "c.430C>G", "c.433A>T", "c.582C>T", "c.595A>G","c.697G>A", "c.751G>A"))
+                                              "c.430C>G", "c.433A>T", "c.595A>G","c.697G>A", "c.751G>A"))
 
 #________________________________
 ##PART 2: Graph the growth curves
 
 control_vars=c("reference", "c.376A>G", "c.337G>A", "c.[202G>A;376A>G]", "c.563C>T", "c.592C>T", "none")
-vus_vars=c("c.430C>G", "c.433A>T", "c.582C>T", "c.595A>G","c.697G>A", "c.751G>A")
+vus_vars=c("c.430C>G", "c.433A>T", "c.595A>G","c.697G>A", "c.751G>A")
 
 #plot control variants of known effect for Supplemental Figure S7A
 control_curves <- ggplot(data=subset(all_data, variant %in% control_vars),
@@ -77,14 +79,14 @@ vus_curves <- ggplot(data=subset(all_data, variant %in% vus_vars),
   scale_fill_manual(values=c("darkgray", "black"))+
   theme_linedraw() +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
-ggsave("AoUvars_yeast_vus_curves.pdf", plot=vus_curves, device=pdf, width=8.71, height=3.5)
+ggsave("AoUvars_yeast_vus_curves.pdf", plot=vus_curves, device=pdf, width=7.5, height=3.5)
 
 #_______________________________
 ##PART 3: Area Under the Curve
 #This is computed using package gcplyr, see doi 10.1101/2023.04.30.538883
 data_auc <- all_data %>% group_by(strain, name, variant, cond, biolrep, techrep) %>%
   summarize(auc = auc(x = time, y = dens))
-data_auc$variant <- factor(data_auc$variant, levels=c("none", "c.751G>A", "c.697G>A", "c.595A>G", "c.582C>T",
+data_auc$variant <- factor(data_auc$variant, levels=c("none", "c.751G>A", "c.697G>A", "c.595A>G",
                                                       "c.433A>T", "c.430C>G", "c.592C>T", "c.563C>T",
                                                       "c.[202G>A;376A>G]", "c.337G>A", "c.376A>G", "reference"))
 
