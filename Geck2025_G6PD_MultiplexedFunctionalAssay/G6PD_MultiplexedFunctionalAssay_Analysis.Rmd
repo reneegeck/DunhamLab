@@ -28,8 +28,11 @@ countess_scores <- read.csv("activity_MAVE_scores.csv", header=T) #scored by Cou
 countess_scores_pivot <- read.csv("activity_MAVE_pivoted_scores.csv", header=T) #scored by CountESS
 vamp_scores <- read.csv("abundance_MAVE.csv", header=T)
 pumptime <- read.delim(file="pumptime.txt", header=T)
-yeast_freq_var <- read.delim(file="activity_MAVE_variant_frequencies.txt", header=T)
-variant_counts <- read.delim(file="activity_MAVE_variant_counts.txt", header=T)
+yeast_freq_var <- read.delim(file="activity_MAVE_variant_frequencies.txt", header=T) #this file will need to be unzipped before reading
+
+variant_counts_controls <- read.delim(file="activity_MAVE_variant_counts_controls.txt", header=T) #this file will need to be unzipped before reading
+variant_counts_selection <- read.delim(file="activity_MAVE_variant_counts_selection.txt", header=T) #this file will need to be unzipped before reading
+variant_counts <- rbind(variant_counts_controls, variant_counts_selection)
 
 catalog <- read.delim("g6pd_catalog_sept25.txt") #based on data from github.com/reneegeck/g6pdcat, updated Sept 25, 2025
 
