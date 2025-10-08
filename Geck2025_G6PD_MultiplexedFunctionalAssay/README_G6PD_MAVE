@@ -10,3 +10,4 @@ Please cite: Geck RC et al. 2025. Functional evidence for G6PD variant classific
 The script to analyze data and generate all figures is G6PD_MultiplexedFunctionalAssay_Analysis.Rmd.
 All other files are called by the script.
 We recommend downloading the entire folder (Geck2025_G6PD_MultiplexedFunctionalAssay) and running the script with that folder set as the working directory.
+Three files will need to be unzipped after downloading.
