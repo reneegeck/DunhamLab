@@ -1,0 +1,516 @@
+position	conserved	domain
+1	not in Zwf1	NA
+2	not in Zwf1	NA
+3	not in Zwf1	NA
+4	not in Zwf1	NA
+5	not in Zwf1	NA
+6	not in Zwf1	NA
+7	not in Zwf1	NA
+8	not in Zwf1	NA
+9	not in Zwf1	NA
+10	not in Zwf1	NA
+11	not in Zwf1	NA
+12	not in Zwf1	NA
+13	not in Zwf1	NA
+14	not in Zwf1	NA
+15	not in Zwf1	NA
+16	not in Zwf1	NA
+17	not in Zwf1	NA
+18	not in Zwf1	NA
+19	not in Zwf1	NA
+20	different	NA
+21	different	NA
+22	similar	NA
+23	identical	NA
+24	different	NA
+25	similar	NA
+26	identical	NA
+27	different	NA
+28	similar	NA
+29	different	NA
+30	similar	NA
+31	identical	NA
+32	different	NA
+33	similar	NA
+34	different	NA
+35	identical	NADP-binding domain
+36	similar	NADP-binding domain
+37	different	NADP-binding domain
+38	identical	NADP-binding site
+39	identical	NADP-binding site
+40	identical	NADP-binding site
+41	identical	NADP-binding site
+42	identical	NADP-binding site
+43	identical	NADP-binding site
+44	identical	NADP-binding site
+45	identical	NADP-binding domain
+46	identical	NADP-binding domain
+47	identical	NADP-binding domain
+48	different	NADP-binding domain
+49	similar	NADP-binding domain
+50	identical	NADP-binding domain
+51	different	NADP-binding domain
+52	similar	NADP-binding domain
+53	similar	NADP-binding domain
+54	different	NADP-binding domain
+55	identical	NADP-binding domain
+56	identical	NADP-binding domain
+57	identical	NADP-binding domain
+58	similar	NADP-binding domain
+59	identical	NADP-binding domain
+60	different	NADP-binding domain
+61	identical	NADP-binding domain
+62	identical	NADP-binding domain
+63	not in Zwf1	NADP-binding domain
+64	different	NADP-binding domain
+65	identical	NADP-binding domain
+66	different	NADP-binding domain
+67	identical	NADP-binding domain
+68	different	NADP-binding domain
+69	identical	NADP-binding domain
+70	identical	NADP-binding domain
+71	identical	NADP-binding domain
+72	identical	NADP-binding domain
+73	identical	NADP-binding domain
+74	similar	NADP-binding domain
+75	identical	NADP-binding domain
+76	similar	NADP-binding domain
+77	different	NADP-binding domain
+78	different	NADP-binding domain
+79	identical	NADP-binding domain
+80	similar	NADP-binding domain
+81	different	NADP-binding domain
+82	identical	NADP-binding domain
+83	different	NADP-binding domain
+84	identical	NADP-binding domain
+85	different	NADP-binding domain
+86	identical	NADP-binding domain
+87	different	NADP-binding domain
+88	different	NADP-binding domain
+89	identical	NADP-binding domain
+90	different	NADP-binding domain
+91	different	NADP-binding domain
+92	identical	NADP-binding domain
+93	identical	NADP-binding domain
+94	similar	NADP-binding domain
+95	different	NADP-binding domain
+96	different	NADP-binding domain
+97	identical	NADP-binding domain
+98	similar	NADP-binding domain
+99	identical	NADP-binding domain
+100	similar	NADP-binding domain
+101	identical	NADP-binding domain
+102	identical	NADP-binding domain
+103	not in Zwf1	NADP-binding domain
+104	similar	NADP-binding domain
+105	different	NADP-binding domain
+106	identical	NADP-binding domain
+107	identical	NADP-binding domain
+108	similar	NADP-binding domain
+109	different	NADP-binding domain
+110	identical	NADP-binding domain
+111	similar	NADP-binding domain
+112	identical	NADP-binding domain
+113	identical	NADP-binding domain
+114	identical	NADP-binding domain
+115	different	NADP-binding domain
+116	similar	NADP-binding domain
+117	not in Zwf1	NADP-binding domain
+118	similar	NADP-binding domain
+119	similar	NADP-binding domain
+120	different	NADP-binding domain
+121	identical	NADP-binding domain
+122	different	NADP-binding domain
+123	similar	NADP-binding domain
+124	different	NADP-binding domain
+125	different	NADP-binding domain
+126	similar	NADP-binding domain
+127	different	NADP-binding domain
+128	different	NADP-binding domain
+129	different	NADP-binding domain
+130	different	NADP-binding domain
+131	not in Zwf1	NADP-binding domain
+132	identical	NADP-binding domain
+133	not in Zwf1	NADP-binding domain
+134	identical	NADP-binding domain
+135	identical	NADP-binding domain
+136	identical	NADP-binding domain
+137	identical	NADP-binding domain
+138	identical	NADP-binding domain
+139	identical	NADP-binding domain
+140	identical	NADP-binding domain
+141	identical	NADP-binding domain
+142	identical	NADP-binding domain
+143	identical	NADP-binding domain
+144	identical	NADP-binding domain
+145	similar	NADP-binding domain
+146	identical	NADP-binding domain
+147	similar	NADP-binding domain
+148	different	NADP-binding domain
+149	different	NADP-binding domain
+150	identical	NADP-binding domain
+151	different	NADP-binding domain
+152	identical	NADP-binding domain
+153	similar	NADP-binding domain
+154	identical	NADP-binding domain
+155	not in Zwf1	NADP-binding domain
+156	different	NADP-binding domain
+157	identical	NADP-binding domain
+158	different	NADP-binding domain
+159	different	NADP-binding domain
+160	different	NADP-binding domain
+161	similar	NADP-binding domain
+162	different	NADP-binding domain
+163	identical	NADP-binding domain
+164	different	NADP-binding domain
+165	different	NADP-binding domain
+166	identical	NADP-binding domain
+167	similar	NADP-binding domain
+168	identical	NADP-binding domain
+169	identical	NADP-binding domain
+170	identical	NADP-binding domain
+171	identical	NADP-binding domain
+172	identical	NADP-binding domain
+173	identical	NADP-binding domain
+174	identical	NADP-binding domain
+175	similar	NADP-binding domain
+176	identical	NADP-binding domain
+177	identical	NADP-binding domain
+178	different	NADP-binding domain
+179	identical	NADP-binding domain
+180	different	NADP-binding domain
+181	not in Zwf1	NADP-binding domain
+182	identical	NADP-binding domain
+183	identical	NADP-binding domain
+184	different	NADP-binding domain
+185	identical	NADP-binding domain
+186	not in Zwf1	NADP-binding domain
+187	similar	NADP-binding domain
+188	different	NADP-binding domain
+189	different	NADP-binding domain
+190	identical	NADP-binding domain
+191	identical	NADP-binding domain
+192	similar	NADP-binding domain
+193	identical	NADP-binding domain
+194	similar	NADP-binding domain
+195	similar	NADP-binding domain
+196	similar	NADP-binding domain
+197	identical	NADP-binding domain
+198	identical	G6P-binding site
+199	identical	G6P-binding site
+200	identical	G6P-binding site
+201	identical	G6P-binding site
+202	identical	G6P-binding site
+203	identical	G6P-binding site
+204	identical	G6P-binding site
+205	identical	G6P-binding site
+206	identical	G6P-binding site
+207	different	NADP-binding domain
+208	identical	NADP-binding domain
+209	different	NADP-binding domain
+210	identical	NADP-binding domain
+211	identical	NA
+212	different	C-terminal domain
+213	identical	C-terminal domain
+214	identical	C-terminal domain
+215	identical	C-terminal domain
+216	identical	C-terminal domain
+217	similar	C-terminal domain
+218	identical	C-terminal domain
+219	different	C-terminal domain
+220	not in Zwf1	C-terminal domain
+221	identical	C-terminal domain
+222	different	C-terminal domain
+223	different	C-terminal domain
+224	different	C-terminal domain
+225	identical	C-terminal domain
+226	identical	C-terminal domain
+227	identical	C-terminal domain
+228	identical	C-terminal domain
+229	identical	C-terminal domain
+230	identical	C-terminal domain
+231	different	C-terminal domain
+232	different	C-terminal domain
+233	identical	C-terminal domain
+234	identical	C-terminal domain
+235	not in Zwf1	C-terminal domain
+236	similar	C-terminal domain
+237	identical	C-terminal domain
+238	identical	C-terminal domain
+239	identical	C-terminal domain
+240	different	C-terminal domain
+241	identical	C-terminal domain
+242	identical	C-terminal domain
+243	identical	C-terminal domain
+244	identical	C-terminal domain
+245	identical	C-terminal domain
+246	identical	C-terminal domain
+247	identical	C-terminal domain
+248	identical	C-terminal domain
+249	identical	C-terminal domain
+250	identical	C-terminal domain
+251	identical	C-terminal domain
+252	different	C-terminal domain
+253	different	C-terminal domain
+254	identical	C-terminal domain
+255	identical	C-terminal domain
+256	identical	C-terminal domain
+257	identical	C-terminal domain
+258	identical	C-terminal domain
+259	identical	C-terminal domain
+260	identical	C-terminal domain
+261	identical	C-terminal domain
+262	identical	C-terminal domain
+263	identical	C-terminal domain
+264	identical	C-terminal domain
+265	identical	C-terminal domain
+266	identical	C-terminal domain
+267	different	C-terminal domain
+268	different	C-terminal domain
+269	different	C-terminal domain
+270	identical	C-terminal domain
+271	similar	C-terminal domain
+272	different	C-terminal domain
+273	identical	C-terminal domain
+274	identical	C-terminal domain
+275	similar	C-terminal domain
+276	identical	C-terminal domain
+277	similar	C-terminal domain
+278	identical	C-terminal domain
+279	different	C-terminal domain
+280	similar	C-terminal domain
+281	different	C-terminal domain
+282	similar	C-terminal domain
+283	different	C-terminal domain
+284	similar	C-terminal domain
+285	identical	C-terminal domain
+286	identical	C-terminal domain
+287	identical	C-terminal domain
+288	identical	C-terminal domain
+289	identical	C-terminal domain
+290	identical	C-terminal domain
+291	identical	C-terminal domain
+292	identical	C-terminal domain
+293	identical	C-terminal domain
+294	different	C-terminal domain
+295	similar	C-terminal domain
+296	different	C-terminal domain
+297	different	C-terminal domain
+298	similar	C-terminal domain
+299	similar	C-terminal domain
+300	different	C-terminal domain
+301	similar	C-terminal domain
+302	similar	C-terminal domain
+303	identical	C-terminal domain
+304	similar	C-terminal domain
+305	identical	C-terminal domain
+306	identical	C-terminal domain
+307	identical	C-terminal domain
+308	identical	C-terminal domain
+309	not in Zwf1	C-terminal domain
+310	identical	C-terminal domain
+311	different	C-terminal domain
+312	different	C-terminal domain
+313	similar	C-terminal domain
+314	not in Zwf1	C-terminal domain
+315	similar	C-terminal domain
+316	identical	C-terminal domain
+317	not in Zwf1	C-terminal domain
+318	different	C-terminal domain
+319	not in Zwf1	C-terminal domain
+320	identical	C-terminal domain
+321	similar	C-terminal domain
+322	identical	C-terminal domain
+323	similar	C-terminal domain
+324	identical	C-terminal domain
+325	identical	C-terminal domain
+326	different	C-terminal domain
+327	identical	C-terminal domain
+328	identical	C-terminal domain
+329	different	C-terminal domain
+330	similar	C-terminal domain
+331	different	C-terminal domain
+332	identical	C-terminal domain
+333	different	C-terminal domain
+334	different	C-terminal domain
+335	similar	C-terminal domain
+336	identical	C-terminal domain
+337	identical	C-terminal domain
+338	identical	C-terminal domain
+339	identical	C-terminal domain
+340	different	C-terminal domain
+341	different	C-terminal domain
+342	not in Zwf1	C-terminal domain
+343	similar	C-terminal domain
+344	similar	C-terminal domain
+345	identical	C-terminal domain
+346	identical	C-terminal domain
+347	identical	C-terminal domain
+348	identical	C-terminal domain
+349	identical	C-terminal domain
+350	similar	C-terminal domain
+351	identical	C-terminal domain
+352	identical	C-terminal domain
+353	identical	C-terminal domain
+354	different	C-terminal domain
+355	different	C-terminal domain
+356	different	C-terminal domain
+357	identical	C-terminal domain
+358	similar	C-terminal domain
+359	identical	C-terminal domain
+360	identical	C-terminal domain
+361	identical	C-terminal domain
+362	identical	C-terminal domain
+363	identical	C-terminal domain
+364	identical	C-terminal domain
+365	different	C-terminal domain
+366	identical	C-terminal domain
+367	similar	C-terminal domain
+368	identical	C-terminal domain
+369	similar	C-terminal domain
+370	identical	C-terminal domain
+371	identical	C-terminal domain
+372	identical	C-terminal domain
+373	similar	C-terminal domain
+374	similar	C-terminal domain
+375	different	C-terminal domain
+376	identical	C-terminal domain
+377	identical	C-terminal domain
+378	identical	C-terminal domain
+379	not in Zwf1	C-terminal domain
+380	similar	dimerization
+381	identical	dimerization
+382	not in Zwf1	dimerization
+383	different	dimerization
+384	similar	dimerization
+385	different	dimerization
+386	different	dimerization
+387	different	dimerization
+388	identical	dimerization
+389	identical	dimerization
+390	identical	dimerization
+391	identical	dimerization
+392	identical	dimerization
+393	identical	dimerization
+394	identical	dimerization
+395	identical	dimerization
+396	identical	dimerization
+397	similar	dimerization
+398	different	dimerization
+399	identical	dimerization
+400	identical	dimerization
+401	identical	dimerization
+402	different	dimerization
+403	identical	dimerization
+404	different	dimerization
+405	different	dimerization
+406	different	dimerization
+407	identical	dimerization
+408	different	dimerization
+409	identical	dimerization
+410	identical	dimerization
+411	different	dimerization
+412	different	dimerization
+413	not in Zwf1	dimerization
+414	identical	dimerization
+415	different	dimerization
+416	different	dimerization
+417	similar	dimerization
+418	similar	dimerization
+419	similar	dimerization
+420	identical	dimerization
+421	similar	dimerization
+422	identical	dimerization
+423	identical	dimerization
+424	identical	dimerization
+425	similar	dimerization
+426	different	C-terminal domain
+427	identical	C-terminal domain
+428	identical	C-terminal domain
+429	different	C-terminal domain
+430	similar	C-terminal domain
+431	different	C-terminal domain
+432	different	C-terminal domain
+433	similar	C-terminal domain
+434	identical	C-terminal domain
+435	similar	C-terminal domain
+436	identical	C-terminal domain
+437	identical	C-terminal domain
+438	identical	C-terminal domain
+439	different	C-terminal domain
+440	identical	C-terminal domain
+441	identical	C-terminal domain
+442	different	C-terminal domain
+443	identical	C-terminal domain
+444	similar	C-terminal domain
+445	different	C-terminal domain
+446	different	C-terminal domain
+447	identical	C-terminal domain
+448	different	C-terminal domain
+449	different	C-terminal domain
+450	different	C-terminal domain
+451	different	C-terminal domain
+452	identical	C-terminal domain
+453	identical	C-terminal domain
+454	identical	C-terminal domain
+455	different	C-terminal domain
+456	identical	C-terminal domain
+457	identical	C-terminal domain
+458	identical	C-terminal domain
+459	not in Zwf1	C-terminal domain
+460	similar	C-terminal domain
+461	different	C-terminal domain
+462	identical	C-terminal domain
+463	similar	C-terminal domain
+464	identical	C-terminal domain
+465	identical	C-terminal domain
+466	identical	C-terminal domain
+467	identical	C-terminal domain
+468	identical	C-terminal domain
+469	identical	C-terminal domain
+470	identical	C-terminal domain
+471	not in Zwf1	C-terminal domain
+472	identical	C-terminal domain
+473	identical	C-terminal domain
+474	not in Zwf1	C-terminal domain
+475	not in Zwf1	C-terminal domain
+476	similar	C-terminal domain
+477	identical	C-terminal domain
+478	different	C-terminal domain
+479	identical	C-terminal domain
+480	different	C-terminal domain
+481	identical	C-terminal domain
+482	identical	C-terminal domain
+483	different	C-terminal domain
+484	identical	C-terminal domain
+485	identical	C-terminal domain
+486	identical	C-terminal domain
+487	identical	C-terminal domain
+488	identical	structural NADP-binding site
+489	identical	structural NADP-binding site
+490	not in Zwf1	C-terminal domain
+491	different	C-terminal domain
+492	similar	C-terminal domain
+493	different	C-terminal domain
+494	identical	C-terminal domain
+495	different	C-terminal domain
+496	identical	C-terminal domain
+497	identical	C-terminal domain
+498	similar	C-terminal domain
+499	identical	C-terminal domain
+500	not in Zwf1	C-terminal domain
+501	different	C-terminal domain
+502	different	C-terminal domain
+503	not in Zwf1	C-terminal domain
+504	identical	NA
+505	different	NA
+506	different	NA
+507	identical	NA
+508	different	NA
+509	identical	NA
+510	identical	NA
+511	different	NA
+512	identical	NA
+513	different	NA
+514	identical	NA
+515	not in Zwf1	NA
