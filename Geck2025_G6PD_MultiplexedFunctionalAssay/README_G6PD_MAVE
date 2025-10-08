@@ -1,0 +1,12 @@
+## G6PD multiplexed functional assay
+This repository includes the code and files neeed to create figures from Geck et al. 2025
+
+## Citation
+
+Please cite: Geck RC et al. 2025. Functional evidence for G6PD variant classification from mutational scanning. bioRxiv. doi: https://doi.org/10.1101/2025.08.11.669723
+
+## Repository overview
+
+The script to analyze data and generate all figures is G6PD_MultiplexedFunctionalAssay_Analysis.Rmd.
+All other files are called by the script.
+We recommend downloading the entire folder (Geck2025_G6PD_MultiplexedFunctionalAssay) and running the script with that folder set as the working directory.
