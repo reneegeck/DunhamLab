@@ -1,0 +1,866 @@
+---
+title: "G6PD_MAVE_analysis"
+author: "Renee Geck"
+date: "2026-04-14"
+---
+
+```{r readme_citation}
+#This data is from a study under review.
+#In the meantime, a preprint is available at https://www.biorxiv.org/content/10.1101/2025.08.11.669723v2
+#Please cite: Geck RC, et al. 2025. Functional evidence for G6PD variant classification from mutational scanning. bioRxiv. doi: https://doi.org/10.1101/2025.08.11.669723
+```
+
+```{r setup_tools}
+library(dplyr)
+library(ggplot2)
+library(viridis)
+library(tidyr)
+library(stringr)
+library(ggpubr)
+library(scales)
+library(plotly)
+
+rsq <- function(x, y) summary(lm(y~x))$r.squared
+pop_sd <- function(x) {sqrt((length(x)-1)/length(x)) * sd(x)} #population standard deviation instead of sample
+```
+
+```{r import_data}
+countess_scores_pivot <- read.csv("activity_MAVE_pivoted_scores.csv", header=T) #scored by CountESS
+vamp_scores <- read.csv("abundance_MAVE_WTnorm.csv", header=T)
+pumptime <- read.delim(file="pumptime.txt", header=T)
+yeast_freq_var <- read.delim(file="activity_MAVE_variant_frequencies.txt", header=T) #this file will need to be unzipped before reading
+
+variant_counts_controls <- read.delim(file="activity_MAVE_variant_counts_controls.txt", header=T) #this file will need to be unzipped before reading
+variant_counts_selection <- read.delim(file="activity_MAVE_variant_counts_selection.txt", header=T) #this file will need to be unzipped before reading
+variant_counts <- rbind(variant_counts_controls, variant_counts_selection)
+
+catalog <- read.delim("g6pd_catalog_sept25.txt") #based on data from github.com/reneegeck/g6pdcat, updated Sept 25, 2025
+
+revel_predictions <- read.table("REVEL_G6PD_vars.txt", sep="\t", header=T) #I added the REVEL interpretations according to PMID: 36413997, and then made the "REVEL class" by taking any benign evidence to LB and any path evidence to LP
+am_predictions <- read.table("AlphaMissense_G6PD_vars.txt", sep="\t", header=T)
+predictions <- merge(am_predictions, revel_predictions, by="protein", all=T)
+
+conservation <- read.table("G6PD_domains_conservation.txt", sep="\t", header=T)
+```
+
+```{r normalize_yeast_scores}
+countess_scores_piv_single <- countess_scores_pivot %>% filter(!grepl(".*;.*", protein))
+
+countess_scores_piv_single <- countess_scores_piv_single %>%
+  mutate(rep1_score_norm = (countess_scores_piv_single$score__rep_1__cond_control - median(subset(countess_scores_piv_single, type == "N")$score__rep_1__cond_control, na.rm = TRUE)) / (median(subset(countess_scores_piv_single, type == "S")$score__rep_1__cond_control, na.rm = TRUE) - median(subset(countess_scores_piv_single, type == "N")$score__rep_1__cond_control, na.rm = TRUE))) %>%
+    mutate(rep2_score_norm = (countess_scores_piv_single$score__rep_2__cond_control - median(subset(countess_scores_piv_single, type == "N")$score__rep_2__cond_control, na.rm = TRUE)) / (median(subset(countess_scores_piv_single, type == "S")$score__rep_2__cond_control, na.rm = TRUE) - median(subset(countess_scores_piv_single, type == "N")$score__rep_2__cond_control, na.rm = TRUE))) %>%
+    mutate(rep3_score_norm = (countess_scores_piv_single$score__rep_3__cond_stress - median(subset(countess_scores_piv_single, type == "N")$score__rep_3__cond_stress, na.rm = TRUE)) / (median(subset(countess_scores_piv_single, type == "S")$score__rep_3__cond_stress, na.rm = TRUE) - median(subset(countess_scores_piv_single, type == "N")$score__rep_3__cond_stress, na.rm = TRUE))) %>%
+    mutate(rep4_score_norm = (countess_scores_piv_single$score__rep_4__cond_stress - median(subset(countess_scores_piv_single, type == "N")$score__rep_4__cond_stress, na.rm = TRUE)) / (median(subset(countess_scores_piv_single, type == "S")$score__rep_4__cond_stress, na.rm = TRUE) - median(subset(countess_scores_piv_single, type == "N")$score__rep_4__cond_stress, na.rm = TRUE)))
+
+countess_scores_norm <- data.frame(countess_scores_piv_single$protein, countess_scores_piv_single$type, countess_scores_piv_single$rep1_score_norm, countess_scores_piv_single$rep2_score_norm, countess_scores_piv_single$rep3_score_norm, countess_scores_piv_single$rep4_score_norm)
+
+colnames(countess_scores_norm) <- c("protein", "type", "rep1_score_norm", "rep2_score_norm", "rep3_score_norm", "rep4_score_norm")
+
+#also make a long pivot version
+countess_scores_norm_long <- countess_scores_norm %>% pivot_longer(cols = !c(protein, type), names_to ="repl", values_to = "score_norm")
+countess_scores_norm_long$repl <- substring(countess_scores_norm_long$repl, 1, 4)
+```
+
+```{r normalize_abundance_scores}
+#note that the replicates in the vamp-seq file are called 1 and 3; in the paper they are called 1 and 2 (which is 3 in this file)
+
+#are already normalized to wt = 1 and nonsense = 0 
+vamp_scores_norm <- vamp_scores
+colnames(vamp_scores_norm) <- c("protein", "type", "abund_score", "abund_stderr", "rep1_score_norm", "rep3_score_norm")
+
+#make numeric
+vamp_scores_norm$abund_score <- as.numeric(vamp_scores_norm$abund_score)
+vamp_scores_norm$abund_stderr <- as.numeric(vamp_scores_norm$abund_stderr)
+vamp_scores_norm$rep1_score_norm <- as.numeric(vamp_scores_norm$rep1_score_norm)
+vamp_scores_norm$rep3_score_norm <- as.numeric(vamp_scores_norm$rep3_score_norm)
+
+#also make a long pivot version
+vamp_scores_norm_long <- vamp_scores_norm %>% pivot_longer(cols = !c(protein, type, abund_score, abund_stderr), names_to ="repl", values_to = "score_norm")
+vamp_scores_norm_long$repl <- substring(vamp_scores_norm_long$repl, 1, 4)
+vamp_scores_norm_long <- vamp_scores_norm_long %>% select(-abund_score, -abund_stderr)
+```
+
+```{r normalize_data}
+#average the yeast activity data
+#if one is NA it will just report the one that is not NA
+yeast_countess_scores <- countess_scores_norm %>% 
+  rowwise() %>%
+  mutate(ctl_score = (pmax(rep1_score_norm, rep2_score_norm, na.rm=TRUE) + pmin(rep1_score_norm, rep2_score_norm, na.rm=TRUE))/2,
+         stress_score = (pmax(rep3_score_norm, rep4_score_norm, na.rm=TRUE) + pmin(rep3_score_norm, rep4_score_norm, na.rm=TRUE))/2,
+         ctl_stdev = sd(c(rep1_score_norm, rep2_score_norm)),
+         stress_stdev = sd(c(rep3_score_norm, rep4_score_norm)))
+
+yeast_stress_scores <- select(yeast_countess_scores, protein, type, stress_score, stress_stdev)
+yeast_control_scores <- select(yeast_countess_scores, protein, ctl_score, ctl_stdev)
+
+#the VAMP-seq abundance data is already averaged, variables called abund_score and abund_stderr
+#make a scaled version that is synonymous-nonsense medians centered on 1 and 0, like the yeast data
+vamp_scores_norm <- vamp_scores_norm %>%
+  mutate(abund_score_norm = (vamp_scores_norm$abund_score - median(subset(vamp_scores_norm, type == "N")$abund_score, na.rm = TRUE)) / (median(subset(vamp_scores_norm, type == "S")$abund_score, na.rm = TRUE) - median(subset(vamp_scores_norm, type == "N")$abund_score, na.rm = TRUE)))
+
+#combine the two by variant; there are none that are only in the yeast library
+g6pd_scores <- merge(vamp_scores_norm, yeast_stress_scores, by="protein", all.x=T, all.y=T)
+g6pd_scores <- subset(g6pd_scores, select = -c(type.y))
+names(g6pd_scores)[names(g6pd_scores) == 'type.x'] <- 'type'
+g6pd_scores <- subset(g6pd_scores, type != "D") #remove the few deletion mutants
+
+#calculate z scores of -1 and -3 from the synonymous distribution
+activ_synon_z1 <- mean(subset(yeast_stress_scores, type=="S")$stress_score) - pop_sd(subset(yeast_stress_scores, type=="S")$stress_score)
+activ_synon_z3 <- mean(subset(yeast_stress_scores, type=="S")$stress_score) - 3*pop_sd(subset(yeast_stress_scores, type=="S")$stress_score)
+abund_synon_z1 <- mean(subset(vamp_scores_norm, type=="S")$abund_score) - pop_sd(subset(vamp_scores_norm, type=="S")$abund_score)
+abund_synon_z3 <- mean(subset(vamp_scores_norm, type=="S")$abund_score) - 3*pop_sd(subset(vamp_scores_norm, type=="S")$abund_score)
+abund_synon_norm_z1 <- mean(subset(vamp_scores_norm, type=="S")$abund_score_norm) - pop_sd(subset(vamp_scores_norm, type=="S")$abund_score_norm)
+abund_synon_norm_z3 <- mean(subset(vamp_scores_norm, type=="S")$abund_score_norm) - 3*pop_sd(subset(vamp_scores_norm, type=="S")$abund_score_norm)
+
+#For ones that have only abundance score, but it's low (<z=-3 from synonymous), then use the re-normalized abundance score
+#For ones with normal or uninformative abundance score, that we don't have activity data for, functional score = NA
+#create a functional score that is the lower of the two assay scores
+g6pd_scores_low <- g6pd_scores %>%
+  subset(abund_score_norm < abund_synon_norm_z3) %>%
+  rowwise() %>%
+  mutate(functional_score = pmin(stress_score, abund_score_norm, na.rm=TRUE))
+g6pd_scores_high <- g6pd_scores %>%
+  subset(abund_score_norm >= abund_synon_norm_z3) %>%
+  rowwise() %>%
+  mutate(functional_score = pmin(stress_score, abund_score_norm, na.rm=F))
+g6pd_scores <- rbind(g6pd_scores_low, g6pd_scores_high)
+
+g6pd_scores <- g6pd_scores %>% select(protein, type, functional_score, stress_score, stress_stdev, abund_score, abund_stderr)
+
+nonsynon_median_prenormalization <- median(subset(g6pd_scores, type == "N")$functional_score, na.rm = TRUE)
+synon_median_prenormalization <- median(subset(g6pd_scores, type == "S")$functional_score, na.rm = TRUE)
+
+#re-normalize the functional scores to S=1 and N=0
+g6pd_scores <- g6pd_scores %>%
+  rowwise() %>%
+  mutate(functional_score_norm = (functional_score - nonsynon_median_prenormalization) /
+  (synon_median_prenormalization - nonsynon_median_prenormalization))
+g6pd_scores$functional_score <- NULL
+g6pd_scores <- g6pd_scores %>% rename(functional_score = functional_score_norm)
+
+write.table(g6pd_scores,"220212_G6PD_functional_scores.txt",sep="\t",row.names=FALSE)
+
+synon_scores <- subset(g6pd_scores, type=="S")
+synon_noNAfxn <- subset(synon_scores, !is.na(functional_score))
+
+func_synon_z1 <- mean(synon_noNAfxn$functional_score) - pop_sd(synon_noNAfxn$functional_score)
+func_synon_z3 <- mean(synon_noNAfxn$functional_score) - 3*pop_sd(synon_noNAfxn$functional_score)
+
+#also with the control scores
+yeast_ctl_scores <- select(yeast_countess_scores, protein, ctl_score, ctl_stdev)
+yeast_ctl_scores <- merge(g6pd_scores, yeast_ctl_scores, by="protein", all=T)
+write.table(yeast_ctl_scores,"260212_G6PD_all_scores.txt",sep="\t",row.names=FALSE)
+
+#create a long version
+g6pd_scores_long <- g6pd_scores %>% pivot_longer(cols = !c(protein, type), names_to ="assay", values_to = "score_norm")
+
+#split apart the variants into start end and position
+g6pd_scores_residues <- g6pd_scores %>%
+  rowwise() %>%
+  mutate(position = as.numeric(gsub("\\D", "", protein)), #extract the residue position
+         start = str_extract(protein, "(?<=[\\.])([a-zA-Z]+)(?=[0-9])"), #extract the letters after the . and before numbers
+         end = str_extract(protein, "(?<=[0-9])([a-zA-Z]+)")) #extract the letters after the numbers
+
+g6pd_scores_residues_s <- subset(g6pd_scores_residues, type == "S") %>% rowwise %>% mutate(end = start) #have to deal with the synonymous
+g6pd_scores_residues_nm <- subset(g6pd_scores_residues, type != "S")
+g6pd_scores_residues <- rbind(g6pd_scores_residues_nm, g6pd_scores_residues_s)
+
+dms_predictions <- merge(g6pd_scores_residues_nm, predictions, by="protein")
+```
+
+```{r calculations}
+#number of missense variants with average activity below zscore -3 from synonymous
+print(nrow(subset(yeast_stress_scores, type=="M" & stress_score<activ_synon_z3))) #4948
+#number of missense variants with average activity over zscore -1 from synonymous
+print(nrow(subset(yeast_stress_scores, type=="M" & stress_score>activ_synon_z1))) #1919
+#number of missense variants with average activity intermediate
+print(nrow(subset(yeast_stress_scores, type=="M" & stress_score<=activ_synon_z1 & stress_score>=activ_synon_z3))) #1361
+
+#sanity check, this is 8228 which is the sum of the three categories!
+print(nrow(subset(yeast_stress_scores, type=="M"))) #8228 missense with activity scores
+print(nrow(subset(yeast_stress_scores, type=="N"))) #481 nonsense with activity scores
+print(nrow(subset(yeast_stress_scores, type=="S"))) #435 synonymous with activity scores
+
+#number of missense variants with average abundance below zscore -3 from synonymous
+print(nrow(subset(vamp_scores_norm, type=="M" & abund_score<abund_synon_z3))) #2391
+#number of missense variants with average abundance over zscore -1 from synonymous
+print(nrow(subset(vamp_scores_norm, type=="M" & abund_score>abund_synon_z1))) #5331
+#number of missense variants with average abundance intermediate
+print(nrow(subset(vamp_scores_norm, type=="M" & abund_score<=abund_synon_z1 & abund_score>=abund_synon_z3))) #1954
+
+#number with abundance scores
+print(nrow(subset(vamp_scores_norm, type=="M"))) #9676 missense with abundance scores
+print(nrow(subset(vamp_scores_norm, type=="N"))) #508 nonsense with abundance scores
+print(nrow(subset(vamp_scores_norm, type=="S"))) #489 synonymous with abundance scores
+```
+
+```{r average_per_residue}
+#take average missense score at each site
+avg_res <- subset(g6pd_scores_residues, type=="M") %>% group_by(position) %>% 
+  mutate(site_mean = mean(functional_score, na.rm=T),
+         act_mean = mean(stress_score, na.rm=T),
+         abund_mean = mean(abund_score, na.rm=T))
+
+#just keep the residue and the means, then keep 1 per residue
+avg_res <- subset(avg_res, select=c(position, site_mean, act_mean, abund_mean))
+avg_res <- distinct(avg_res)
+avg_res_fxn <- subset(avg_res, select=c(position, site_mean))
+
+write.table(avg_res_fxn,"260212_ScoreByResidue.txt", sep="\t",row.names=FALSE)
+```
+
+```{r compare_to_catalog}
+names(catalog)[names(catalog) == 'amino_acid'] <- 'protein'
+
+dms_catalog <- merge(g6pd_scores_residues, catalog, by="protein")
+dms_catalog$consensus_class <- factor(dms_catalog$consensus_class, levels=c("B/LB", "P/LP", "VUS"))
+dms_catalog$ClinVar_class <- factor(dms_catalog$ClinVar_class, levels=c("benign", "likely_benign", "likely_pathogenic", "pathogenic", "uncertain", "conflicting", "NA"))
+
+dms_catalog_all <- merge(g6pd_scores_residues, catalog, by="protein", all=T)
+dms_catalog_all$consensus_class <- factor(dms_catalog_all$consensus_class, levels=c("B/LB", "P/LP", "VUS"))
+dms_catalog_all$ClinVar_class <- factor(dms_catalog_all$ClinVar_class, levels=c("benign", "likely_benign", "likely_pathogenic", "pathogenic", "uncertain", "conflicting", "NA"))
+
+dms_catalog_allscores <- merge(dms_catalog_all, yeast_control_scores, by="protein", all=T)
+
+write.table(dms_catalog_allscores,"260224_G6PD_scores_catalog.txt",sep="\t",row.names=FALSE)
+```
+
+
+```{r S1_plot_known_variants}
+variant_counts <- variant_counts %>%
+  mutate(bc_freq = count/total)
+
+example_vars <- subset(variant_counts, protein %in% c("p.=", "p.Tyr437=", "p.Met125Ile", "p.Asn126Asp", "p.Asp282His", "p.Gly131Val", "p.Glu317Lys", "p.Val68Met", "p.Asp181Val", "p.Ala335Thr", "p.Ser188Phe", "p.Arg454Cys"))
+example_vars$protein <- factor(example_vars$protein, levels=c("p.=", "p.Tyr437=", "p.Met125Ile", "p.Asn126Asp", "p.Asp282His", "p.Gly131Val", "p.Glu317Lys", "p.Val68Met", "p.Asp181Val", "p.Ala335Thr", "p.Ser188Phe", "p.Arg454Cys"))
+
+example_vars_sumfreq <- example_vars %>%
+  group_by(protein, rep, cond, time) %>%
+  summarize_at(vars(bc_freq), list(total_freq=sum))
+
+example_vars_graph <- ggplot(data=subset(example_vars_sumfreq, cond=="stress"),
+       aes(x=time, y=total_freq)) + 
+  geom_smooth(color="#1338BE") +
+  geom_point(aes(shape=as.factor(rep)), color="black", show.legend=F) +
+  #scale_y_continuous(trans = "log10",n.breaks = 15, labels = function(x) ifelse(x == 0, "0", x)) + #make log2 yaxis
+  facet_wrap(~protein, scales="free_y", nrow=3) +
+  xlab("time (hours)") +
+  ylab("frequency") +
+  theme_linedraw() +
+  theme(panel.grid.minor = element_blank(), panel.grid.major = element_blank())
+ggsave(file = "260218_example_vars_graph.pdf", example_vars_graph, device="pdf", height = 6, width = 10)
+```
+
+
+```{r S2A_culture_doublings}
+culture_doublings <- ggplot(data=pumptime,
+       aes(x=time, y=volume_replacements, color=condition)) + 
+  geom_point(aes(shape=as.factor(replicate))) +
+  geom_smooth() +
+  scale_color_manual(values=c("black", "#1338BE")) +
+  xlab("time (hours)") +
+  ylab("culture doublings") +
+  theme_linedraw() +
+  theme(panel.grid.minor = element_blank())
+ggsave(file = "250626_culture_doublings.pdf", culture_doublings, device="pdf", height = 2.5, width = 3.7)
+```
+
+```{r S2B_plot_yeast_repl}
+#controls
+activity_ctl_corr <- ggplot(data = countess_scores_norm, aes(x=rep1_score_norm, y=rep2_score_norm)) +
+  geom_point(alpha=0.1) +
+  geom_smooth(method='lm', formula= y~x) +
+  xlab("replicate 1") +
+  ylab("replicate 2") +
+  theme_linedraw()
+ggsave(file = "250124_activity_ctl_corr.pdf", activity_ctl_corr, device="pdf", height = 4, width = 4)
+print(rsq(countess_scores_norm$rep1_score_norm, countess_scores_norm$rep2_score_norm)) #0.4939433
+
+#selection
+activity_sel_corr <- ggplot(data = countess_scores_norm, aes(x=rep3_score_norm, y=rep4_score_norm)) +
+  geom_point(alpha=0.1) +
+  geom_smooth(method='lm', formula= y~x) +
+  xlab("replicate 1") +
+  ylab("replicate 2") +
+  theme_linedraw()
+ggsave(file = "250124_activity_sel_corr.pdf", activity_sel_corr, device="pdf", height = 4, width = 4)
+print(rsq(countess_scores_norm$rep3_score_norm, countess_scores_norm$rep4_score_norm)) #0.9516919
+```
+
+```{r S2C_plot_yeast_synon_nons}
+#make a histogram of synonymous and nonsynonymous variants by replicate
+#rep 1 and 2 are controls, rep 3-4 are selection
+
+activity_rep_histo <- ggplot(data=subset(countess_scores_norm_long, type != "W")) + 
+  geom_histogram(aes(x= score_norm, fill=type), position="stack", binwidth = 0.05) +
+  scale_fill_manual(values=c("#cacaca", "#1338BE", "#B90E0A")) +
+  facet_wrap(~repl) +
+  theme_linedraw()
+ggsave(file = "250124_activity_rep_histo.pdf", activity_rep_histo, device="pdf", height = 4, width = 6)
+
+```
+
+```{r S2D_plot_activity_RBC_corr}
+activity_RBC_corr <- ggplot(data = dms_catalog_allscores, aes(x=activity_avg, y=stress_score)) +
+  geom_point(alpha=0.5) +
+  geom_smooth(method='lm', formula= y~x) +
+  xlab("activity in red blood cells") +
+  ylab("yeast MAVE activity score") +
+  theme_linedraw() +
+  theme(panel.grid.minor = element_blank())
+ggsave(file = "260403_actRBC_corr.pdf", activity_RBC_corr, device="pdf", height = 2, width = 2.5)
+print(cor.test(dms_catalog_allscores$activity_avg, dms_catalog_allscores$stress_score, method = "spearman")) #rho = 0.4172
+```
+
+```{r S2E_activity_variant_change_over_time}
+ggplot(data=subset(yeast_freq_var, condition=="stress" & mut_count==1),
+       aes(x=time_hr, y=total_freq)) + 
+  geom_line(aes(color=diff_aa), stat="smooth", method="lm", alpha=0.008, se=F, show.legend=F) +
+  scale_y_continuous(trans = "log10",n.breaks = 15, labels = function(x) ifelse(x == 0, "0", x)) + #make log2 yaxis
+  scale_color_manual(values=rep(c("black"), 11000)) +
+  #geom_line(color="blue", stat="smooth", method="lm",se=F, show.legend=F, size=2) +
+  xlab("time(hours)") +
+  ylab("variant frequency") +
+  facet_wrap(.~mut_type, nrow=1) +
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+```
+
+
+```{r S3A_plot_vamp_repl}
+#replicate correlation
+abundance_corr <- ggplot(data = vamp_scores_norm, aes(x=rep1_score_norm, y=rep3_score_norm)) +
+  geom_point(alpha=0.1) +
+  geom_smooth(method='lm', formula= y~x) +
+  xlab("replicate 1") +
+  ylab("replicate 2") +
+  theme_linedraw()
+ggsave(file = "260212_abundance_corr.pdf", abundance_corr, device="pdf", height = 4, width = 4)
+print(rsq(vamp_scores_norm$rep1_score_norm, vamp_scores_norm$rep3_score_norm)) #0.7019083
+```
+
+```{r S3B_plot_vamp_synon_nons}
+#make a histogram of synonymous and nonsynonymous variants by replicate
+#what is replicate 2 in this data has errors and is not used further. Rep3 == rep2 in the paper.
+
+abundance_rep_histo <- ggplot(data=subset(vamp_scores_norm_long, type != "W")) + 
+  geom_histogram(aes(x= score_norm, fill=type), position="stack", binwidth = 0.05) +
+  scale_fill_manual(values=c("#cacaca", "#1338BE", "#B90E0A")) +
+  facet_wrap(~repl, nrow=1) +
+  theme_linedraw()
+ggsave(file = "260212_abundance_rep_histo.pdf", abundance_rep_histo, device="pdf", height = 2.2, width = 6)
+```
+
+
+```{r 1C-D_domains_and_conservation}
+conservation$conserved <- factor(conservation$conserved, levels=c("not in Zwf1", "different", "similar", "identical"))
+conservation$domain <- factor(conservation$domain, levels=c("NADP-binding domain", "C-terminal domain", "NADP-binding site", "G6P-binding site", "dimerization", "structural NADP-binding site","NA"))
+
+conservation_str <- ggplot() +
+  geom_tile(data = conservation, aes(x = position, y=1, fill=conserved)) + 
+  scale_fill_manual(values=c("white", "#C2B1CD", "#85639A", "#372869")) +
+  theme_classic()
+ggsave(file = "250401_conservation.pdf", conservation_str, device="pdf", height = 1, width = 25)
+
+domains_str <- ggplot() +
+  geom_tile(data = conservation, aes(x = position, y=1, fill=domain)) + 
+  scale_fill_manual(values=c("gray70", "gray90", "black", "black","black","black","white")) +
+  theme_classic()
+ggsave(file = "250401_domains.pdf", domains_str, device="pdf", height = 1, width = 25)
+```
+
+```{r 1E-F_3_heatmaps}
+#heatmap code adapted from Gabrielle Ferra
+g6pd_scores_residues$end <- factor(g6pd_scores_residues$end, levels=c("His", "Lys", "Arg", "Asp", "Glu", "Cys", "Met", "Asn", "Gln", "Ser", "Thr", "Ala", "Ile", "Leu", "Val", "Phe", "Trp", "Tyr", "Gly", "Pro", "Ter", "NA"))
+
+#Fig 1E
+activity_map <- ggplot() +
+  geom_tile(data = subset(g6pd_scores_residues, is.na(start)==F), aes(x = position, y = end), fill = "grey70") + 
+  geom_tile(data = subset(g6pd_scores_residues, is.na(stress_score)==F & is.na(start)==F), aes(x = position, y = end, fill = stress_score)) +
+  #geom_tile(data = subset(CYP2D6_subset, score <= CYP2D6_lower_bound_act), aes(x = position, y = end), fill = “blue”) +
+  #geom_tile(data = wtseqframe, aes(x = position, y= end, fill = score)) +
+  #geom_point(data = wtseqframe, aes(x = position, y = end), shape = 15, size = 0.6) +
+  xlab(NULL) + scale_x_continuous(limits=c(1,514), expand = c(0,0), breaks = c(1,seq(50,514,50))) +
+  #scale_y_discrete(limits = rev(levels(missing_combinations_act$end))) +
+  ylab("residue") + xlab("position")+
+  scale_fill_gradientn(colors=c("#1338BE", "white", "#B90E0A"), values=rescale(c(-0.2, 1, 1.6)), guide= "colorbar", limits=c(-0.2, 1.6)) +
+  theme(panel.background = element_rect(fill = "grey70"), legend.position = "right", legend.box.margin = margin(0, 0, 0, 0),
+        panel.grid = element_blank(),
+        axis.text.x = element_text(size = 10, angle = 90, hjust = 1, vjust=0.5, color="black"),
+        axis.text.y = element_text(size = 10, color="black"),
+        axis.title.x = element_text(size = 10, color="black"),axis.title.y = element_text(size= 10, color="black"))
+ggsave(file = "241203_activityheatmap.pdf", activity_map, device="pdf", height = 4, width = 25)
+
+#Fig 1F
+abundance_map <- ggplot() +
+  geom_tile(data = subset(g6pd_scores_residues, is.na(start)==F), aes(x = position, y = end), fill = "grey70") + 
+  geom_tile(data = subset(g6pd_scores_residues, is.na(abund_score)==F & is.na(start)==F), aes(x = position, y = end, fill = abund_score)) +
+  #geom_tile(data = subset(CYP2D6_subset, score <= CYP2D6_lower_bound_act), aes(x = position, y = end), fill = “blue”) +
+  #geom_tile(data = wtseqframe, aes(x = position, y= end, fill = score)) +
+  #geom_point(data = wtseqframe, aes(x = position, y = end), shape = 15, size = 0.6) +
+  xlab(NULL) + scale_x_continuous(limits=c(1,514), expand = c(0,0), breaks = c(1,seq(50,514,50))) +
+  #scale_y_discrete(limits = rev(levels(missing_combinations_act$end))) +
+  ylab("residue") + xlab("position")+
+  scale_fill_gradientn(colors=c("#1338BE", "white", "#B90E0A"), values=rescale(c(-0.2, 1, 1.6)), guide= "colorbar", limits=c(-0.2, 1.6)) +
+  theme(panel.background = element_rect(fill = "grey70"), legend.position = "right", legend.box.margin = margin(0, 0, 0, 0),
+        panel.grid = element_blank(),
+        axis.text.x = element_text(size = 10, angle = 90, hjust = 1, vjust=0.5, color="black"),
+        axis.text.y = element_text(size = 10, color="black"),
+        axis.title.x = element_text(size = 10, color="black"),axis.title.y = element_text(size= 10, color="black"))
+ggsave(file = "260212_abundanceheatmap.pdf", abundance_map, device="pdf", height = 4, width = 25)
+
+#Fig 3
+function_map <- ggplot() +
+  geom_tile(data = subset(g6pd_scores_residues, is.na(start)==F), aes(x = position, y = end), fill = "grey70") + 
+  geom_tile(data = subset(g6pd_scores_residues, is.na(functional_score)==F & is.na(start)==F), aes(x = position, y = end, fill = functional_score)) +
+  #geom_tile(data = subset(CYP2D6_subset, score <= CYP2D6_lower_bound_act), aes(x = position, y = end), fill = “blue”) +
+  #geom_tile(data = wtseqframe, aes(x = position, y= end, fill = score)) +
+  #geom_point(data = wtseqframe, aes(x = position, y = end), shape = 15, size = 0.6) +
+  xlab(NULL) + scale_x_continuous(limits=c(1,514), expand = c(0,0), breaks = c(1,seq(50,514,50))) +
+  #scale_y_discrete(limits = rev(levels(missing_combinations_act$end))) +
+  ylab("residue") + xlab("position")+
+  scale_fill_gradientn(colors=c("#1338BE", "white", "#B90E0A"), values=rescale(c(-0.2, 1, 1.6)), guide= "colorbar", limits=c(-0.2, 1.6)) +
+  theme(panel.background = element_rect(fill = "grey70"), legend.position = "right", legend.box.margin = margin(0, 0, 0, 0),
+        panel.grid = element_blank(),
+        axis.text.x = element_text(size = 10, angle = 90, hjust = 1, vjust=0.5, color="black"),
+        axis.text.y = element_text(size = 10, color="black"),
+        axis.title.x = element_text(size = 10, color="black"),axis.title.y = element_text(size= 10, color="black"))
+ggsave(file = "260212_functionheatmap.pdf", function_map, device="pdf", height = 4, width = 25)
+```
+
+
+```{r 2A_plot_activity_abundance}
+act_abund_scatter <- ggplot() +
+  geom_point(data=subset(g6pd_scores, type=="M"), aes(x=stress_score, y=abund_score, color=type), alpha=0.08)+
+  geom_point(data=subset(g6pd_scores, type=="N"), aes(x=stress_score, y=abund_score, color=type), alpha=0.08)+
+  geom_point(data=subset(g6pd_scores, type %in% c("W", "S")), aes(x=stress_score, y=abund_score, color=type), alpha=0.08)+
+  geom_hline(yintercept=abund_synon_z1, color="darkgray", linetype="dashed") +
+  geom_hline(yintercept=abund_synon_z3, color="darkgray", linetype="dashed") +
+  geom_vline(xintercept=activ_synon_z1, color="darkgray", linetype="dashed") +
+  geom_vline(xintercept=activ_synon_z3, color="darkgray", linetype="dashed") +
+  scale_color_manual(values=c("#cacaca", "#1338BE", "#B90E0A", "#B90E0A")) +
+  xlab("activity score") +
+  ylab("abundance score") +
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "260212_actabundscatter.pdf", act_abund_scatter, device="pdf", height = 4, width = 5)
+
+#calculate number in different groups (act-abund)
+print(nrow(g6pd_scores)) #total 10674
+print(nrow(subset(g6pd_scores, stress_score>activ_synon_z1 & abund_score>abund_synon_z1))) #HH 1845, 17.3%
+print(nrow(subset(g6pd_scores, stress_score>activ_synon_z1 & abund_score<abund_synon_z3))) #LAb 47, 0.004%
+print(nrow(subset(g6pd_scores, stress_score<activ_synon_z3 & abund_score>abund_synon_z1))) #LAc 2029, 19.0%
+print(nrow(subset(g6pd_scores, stress_score<activ_synon_z3 & abund_score<abund_synon_z3))) #LL 2407, 22.6%
+```
+
+```{r 2B-C_act_abund_by_site}
+#cutoffs > z=-1 or <z=-3 from synonymous distribution
+#LL both low, NN both normal, LAc is low activity, LAb is low abundance
+avg_res <- avg_res %>% mutate(score_group="intermed")
+avg_res_LL <- filter(avg_res, act_mean<activ_synon_z3 & abund_mean<abund_synon_z3) %>% mutate(score_group="LL")
+avg_res_LAc <- subset(avg_res, act_mean<activ_synon_z3 & abund_mean>abund_synon_z1) %>% mutate(score_group="LAc")
+avg_res_LAb <- subset(avg_res, act_mean>activ_synon_z1 & abund_mean<abund_synon_z3) %>% mutate(score_group="LAb")
+avg_res_NN <- subset(avg_res, act_mean>activ_synon_z1 & abund_mean>abund_synon_z1) %>% mutate(score_group="NN")
+avg_res_NA <- subset(avg_res, is.na(act_mean)) %>% mutate(score_group=NA)
+avg_res_groups <- rbind(avg_res_LL, avg_res_LAc, avg_res_LAb, avg_res_NN, avg_res_NA)
+avg_res_intermed <- subset(avg_res, ! position %in% avg_res_groups$position)
+avg_res <- rbind(avg_res_groups, avg_res_intermed)
+avg_res$score_group <- factor(avg_res$score_group, levels=c("NN", "LAb", "LAc", "LL", "intermed"))
+
+#table of values used for visualization with Genomics2Proteins for 2C, https://g2p.broadinstitute.org/
+write.table(avg_res,"260212_G6PD_residue_categories.txt",sep="\t",row.names=FALSE) 
+
+res_act_abund <- ggplot() +
+  geom_tile(data = subset(avg_res, !is.na(score_group)), aes(x = position, y=1, fill=score_group)) + 
+  scale_fill_manual(values=c("#e04890", "#f6ab78", "#372869", "grey70")) +
+  theme_classic()
+ggsave(file = "260212_res_act_abund.pdf", res_act_abund, device="pdf", height = 1, width = 25)
+```
+
+```{r Fig2D-E_score_by_domain}
+dms_catalog_domain <- merge(dms_catalog_all, conservation, by="position", all=T)
+dms_catalog_domain$domain <- forcats::fct_na_value_to_level(dms_catalog_domain$domain, level = "other")
+dms_catalog_domain$domain <- factor(dms_catalog_domain$domain, levels=c("NADP-binding site", "G6P-binding site", "NADP-binding domain", "dimerization", "structural NADP-binding site", "C-terminal domain", "other"))
+
+#activity
+DMSbyDomain_activity <- ggplot(data=dms_catalog_domain, aes(y=stress_score, x=domain)) +
+  geom_hline(yintercept=1, color="gray") +
+  geom_jitter(color="#A9A9A9", width=0.2, alpha=0.1, size=2, stroke=NA) +
+  geom_boxplot(outlier.shape=NA, fill=NA) +
+  ylab("activity score") +
+  xlab("domain") +
+  ylim(-0.2, 1.8) +
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "260403_DMSbyDomain_activity.pdf", DMSbyDomain_activity, device="pdf", height = 3, width = 4.2)
+
+print(TukeyHSD(aov(stress_score ~ domain, data = dms_catalog_domain)))
+
+#calculate n
+print(nrow(subset(dms_catalog_domain, domain == "NADP-binding site" & !is.na(stress_score)))) #125
+print(nrow(subset(dms_catalog_domain, domain == "G6P-binding site" & !is.na(stress_score)))) #175
+print(nrow(subset(dms_catalog_domain, domain == "NADP-binding domain" & !is.na(stress_score)))) #2956
+print(nrow(subset(dms_catalog_domain, domain == "dimerization" & !is.na(stress_score)))) #865
+print(nrow(subset(dms_catalog_domain, domain == "structural NADP-binding site" & !is.na(stress_score)))) #36
+print(nrow(subset(dms_catalog_domain, domain == "C-terminal domain" & !is.na(stress_score)))) #4365
+print(nrow(subset(dms_catalog_domain, domain == "other" & !is.na(stress_score)))) #653
+
+#abundance
+DMSbyDomain_abundance <- ggplot(data=dms_catalog_domain, aes(y=abund_score, x=domain)) +
+  geom_hline(yintercept=1, color="gray") +
+  geom_jitter(color="#A9A9A9", width=0.2, alpha=0.1, size=2, stroke=NA) +
+  geom_boxplot(outlier.shape=NA, fill=NA) +
+  ylab("abundance score") +
+  xlab("domain") +
+  ylim(-0.2, 1.8) +
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "260403_DMSbyDomain_abundance.pdf", DMSbyDomain_abundance, device="pdf", height = 3, width = 4.2)
+
+print(TukeyHSD(aov(abund_score ~ domain, data = dms_catalog_domain)))
+
+#calculate n
+print(nrow(subset(dms_catalog_domain, domain == "NADP-binding site" & !is.na(abund_score)))) #147
+print(nrow(subset(dms_catalog_domain, domain == "G6P-binding site" & !is.na(abund_score)))) #189
+print(nrow(subset(dms_catalog_domain, domain == "NADP-binding domain" & !is.na(abund_score)))) #3354
+print(nrow(subset(dms_catalog_domain, domain == "dimerization" & !is.na(abund_score)))) #965
+print(nrow(subset(dms_catalog_domain, domain == "structural NADP-binding site" & !is.na(abund_score)))) #42
+print(nrow(subset(dms_catalog_domain, domain == "C-terminal domain" & !is.na(abund_score)))) #5077
+print(nrow(subset(dms_catalog_domain, domain == "other" & !is.na(abund_score)))) #946
+```
+
+
+```{r 4A_graph_data_vs_ptype}
+dms_catalog$phenotype <- factor(dms_catalog$phenotype, levels=c("nondeficient", "deficient", "deficient_AHA", "deficient_CNSHA", "unknown"))
+
+DMSbyPtype <- ggplot(data=subset(dms_catalog, phenotype != "unknown"), aes(y=functional_score, x=phenotype)) +
+  geom_hline(yintercept=1, color="gray") +
+  geom_jitter(color="gray", width=0.2, alpha=0.5, size=2, stroke=NA) +
+  geom_boxplot(outlier.shape=NA, fill=NA) +
+  ylab("functional score") +
+  xlab("phenotype") +
+  ylim(-0.2, 1.5) +
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "260212_phenotype.pdf", DMSbyPtype, device="pdf", height = 4, width = 3.5)
+
+print(TukeyHSD(aov(functional_score ~ phenotype, data = subset(dms_catalog, phenotype != "unknown"))))
+print(nrow(subset(dms_catalog, phenotype == "nondeficient" & !is.na(functional_score)))) #4
+print(nrow(subset(dms_catalog, phenotype == "deficient" & !is.na(functional_score)))) #77
+print(nrow(subset(dms_catalog, phenotype == "deficient_AHA" & !is.na(functional_score)))) #36
+print(nrow(subset(dms_catalog, phenotype == "deficient_CNSHA" & !is.na(functional_score)))) #67
+```
+
+```{r 4B_graph_data_vs_WHO2022}
+dms_catalog$WHO_class_2022 <- factor(dms_catalog$WHO_class_2022, levels=c("C", "B", "A", "U"))
+
+DMSbyWHO2022 <- ggplot(data=subset(dms_catalog, WHO_class_2022 != "U"), aes(y=functional_score, x=WHO_class_2022)) +
+  geom_hline(yintercept=1, color="gray") +
+  geom_jitter(color="gray", width=0.2, alpha=0.5, size=2, stroke=NA) +
+  geom_boxplot(outlier.shape=NA, fill=NA) +
+  ylab("functional score") +
+  xlab("WHO class") +
+  ylim(-0.2, 1.5) +
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "260212_DMSbyWHO2022.pdf", DMSbyWHO2022, device="pdf", height = 4, width = 2.9)
+
+print(TukeyHSD(aov(functional_score ~ WHO_class_2022, data = subset(dms_catalog, WHO_class_2022 != "U"))))
+#B-C 0.04996, A-C 0.1687
+
+#calculate n
+print(nrow(subset(dms_catalog, WHO_class_2022 == "C" & !is.na(functional_score)))) #3
+print(nrow(subset(dms_catalog, WHO_class_2022 == "B" & !is.na(functional_score)))) #30
+print(nrow(subset(dms_catalog, WHO_class_2022 == "A" & !is.na(functional_score)))) #10
+```
+
+```{r 4C_graph_data_vs_clinvar}
+DMSvsinterp <- ggplot(data=subset(dms_catalog, consensus_class %in% c("B/LB", "P/LP")), aes(y=functional_score, x=consensus_class)) +
+  geom_hline(yintercept=1, color="gray") +
+  geom_jitter(color="gray", width=0.2, alpha=0.5, size=2, stroke=NA) +
+  geom_boxplot(outlier.shape=NA, fill=NA) +
+  ylab("functional score") +
+  xlab("clinical interpretation") +
+  ylim(-0.2, 1.5) +
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "260212_DMSvsinterp.pdf", DMSvsinterp, device="pdf", height = 4, width = 2)
+
+print(t.test(functional_score ~ consensus_class, data = subset(dms_catalog, consensus_class %in% c("B/LB", "P/LP"))))
+print(nrow(subset(dms_catalog, consensus_class == "B/LB" & !is.na(functional_score)))) #147
+print(nrow(subset(dms_catalog, consensus_class == "P/LP" & !is.na(functional_score)))) #181
+```
+
+```{r 4D_functional_score_histo}
+fxn_histogram <- ggplot(data=subset(g6pd_scores_long, assay == "functional_score")) + 
+  geom_histogram(aes(x= score_norm, fill=type), position="stack", binwidth = 0.03) +
+  scale_fill_manual(values=c("#cacaca", "#1338BE", "#B90E0A", "#B90E0A")) +
+  geom_vline(xintercept = func_synon_z1, linetype="dashed") +
+  geom_vline(xintercept = func_synon_z3, linetype="dashed") +
+  labs(x="functional score", y="variants") +
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "260212_fxn_histogram.pdf", fxn_histogram, device="pdf", height = 3, width = 4.8)
+
+#total number  with functional scores
+print(nrow(subset(g6pd_scores, !is.na(functional_score)))) #9504
+#total number missense with functional scores
+print(nrow(subset(g6pd_scores, type=="M" & !is.na(functional_score)))) #8570
+#number of missense variants with functional score over z=-1 from synonymous
+print(nrow(subset(g6pd_scores, type=="M" & functional_score>func_synon_z1))) #2295
+#number of missense variants with functional score under z=-3 
+print(nrow(subset(g6pd_scores, type=="M" & functional_score<func_synon_z3 ))) #4773
+```
+
+```{r 4E_functional_score_interp}
+#calculate zscores of synonymous distribution for benchmarking
+interp_histograms <- ggplot(data=subset(dms_catalog, ClinVar_class %in% c("benign", "likely_benign", "likely_pathogenic", "pathogenic"))) + 
+  geom_histogram(aes(x=functional_score, fill=ClinVar_class), position="stack", binwidth = 0.03) +
+  scale_fill_manual(values=c("#940B08", "#E39F9D", "#A1AFE5", "#0F2D98")) +
+  geom_vline(xintercept=func_synon_z1, linetype="dashed") +
+  geom_vline(xintercept=func_synon_z3, linetype="dashed") +
+  labs(x="functional score", y="variants", fill="ClinVar\nClassification") +
+  theme_linedraw() +
+  scale_x_continuous(breaks=c(0,0.5,1)) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "260212_interp_histogram.pdf", interp_histograms, device="pdf", height = 3, width = 5.5)
+
+print(nrow(subset(dms_catalog, type.x=="M" & functional_score<func_synon_z3))) #211 missense with patho evidence have been found in people
+print(nrow(subset(dms_catalog, type.x=="M" & functional_score<func_synon_z3 & !(consensus_class %in% c("B/LB", "P/LP"))))) #99 VUS with patho evidence have been found in people
+print(nrow(subset(dms_catalog, type.x=="M" & functional_score<func_synon_z3 & consensus_class == "B/LB"))) #0 B/LB get patho evidence 
+print(nrow(subset(dms_catalog, type.x=="M" & functional_score<func_synon_z3 & consensus_class == "P/LP"))) #112 P/LP get patho evidence
+
+print(nrow(subset(dms_catalog, type.x=="M" & functional_score>func_synon_z1))) #204 with benign evidence have been found in people
+print(nrow(subset(dms_catalog, type.x=="M" & functional_score>func_synon_z1 & !(consensus_class %in% c("B/LB", "P/LP"))))) #173 VUS with benign evidence
+print(nrow(subset(dms_catalog, type.x=="M" & functional_score>func_synon_z1 & consensus_class == "B/LB"))) #4 B/LB get benign evidence 
+print(nrow(subset(dms_catalog, type.x=="M" & functional_score>func_synon_z1 & consensus_class == "P/LP"))) #27 P/LP get benign evidence 
+```
+
+```{r calculate_oddspath}
+benign_evidence <- subset(dms_catalog_all, functional_score > func_synon_z1)
+patho_evidence <- subset(dms_catalog_all, functional_score < func_synon_z3)
+
+n_pathogenic_controls <- nrow(subset(dms_catalog_all, consensus_class == "P/LP" & !is.na(functional_score)))
+n_benign_controls <- nrow(subset(dms_catalog_all, consensus_class == "B/LB" & !is.na(functional_score)))
+
+#how many clinvar path/benign vars get normal or abnormal functional scores
+n_path_abnormal  <- nrow(subset(dms_catalog_all, consensus_class == "P/LP" & functional_score < func_synon_z3))
+n_path_normal  <- nrow(subset(dms_catalog_all, consensus_class == "P/LP" & functional_score > func_synon_z1))
+n_benign_abnormal  <- nrow(subset(dms_catalog_all, consensus_class == "B/LB" & functional_score < func_synon_z3))
+n_benign_normal  <- nrow(subset(dms_catalog_all, consensus_class == "B/LB" & functional_score > func_synon_z1))
+
+# Prior probability (P1): Proportion of pathogenic variants in the total control set
+p1 <- n_pathogenic_controls / (n_pathogenic_controls + n_benign_controls)
+
+# Posterior probability (P2) for an "abnormal" result: Proportion of pathogenic variants among controls with abnormal results
+p2_abnormal <- n_path_abnormal / (n_path_abnormal + n_benign_abnormal)
+# OddsPath for functionally abnormal results
+oddspath_abnormal <- (p2_abnormal * (1 - p1)) / ((1 - p2_abnormal) * p1) #31.94
+
+# Posterior probability (P2) for a "normal" result: Proportion of pathogenic variants among controls with normal results
+p2_normal <- n_path_normal / (n_path_normal + n_benign_normal)
+# OddsPath for functionally normal results
+oddspath_normal <- (p2_normal * (1 - p1)) / ((1 - p2_normal) * p1) #0.1798
+```
+
+
+```{r S5A_DMS_vs_REVELevidence}
+#the REVEL cutoffs for evidence codes are from PMID: 36413997
+dms_predictions$REVEL_evidence <- factor(dms_predictions$REVEL_evidence, levels=c("BP4_M", "BP4", "intermediate", "PP3", "PP3_M", "PP3_S"))
+
+DMSvsREVELcode <- ggplot(data=subset(dms_predictions, !is.na(REVEL_evidence)), aes(y=functional_score, x=REVEL_evidence)) +
+  geom_hline(yintercept=1, color="gray") +
+  geom_jitter(color="gray", width=0.2, alpha=0.2, size=2, stroke=NA) +
+  geom_boxplot(outlier.shape=NA, fill=NA) +
+  ylim(-0.2, 1.5) +
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  ylab("functional score") +
+  xlab("REVEL score calibration (Pejaver et al.)")
+ggsave(file = "260212_DMSvsREVEL.pdf", DMSvsREVELcode, device="pdf", height = 4, width = 5)
+
+print(TukeyHSD(aov(functional_score ~ REVEL_evidence, data = subset(dms_predictions, !is.na(REVEL_evidence)))))
+print(nrow(subset(dms_predictions, REVEL_evidence == "BP4_M" & !is.na(functional_score)))) #2
+print(nrow(subset(dms_predictions, REVEL_evidence == "BP4" & !is.na(functional_score)))) #59
+print(nrow(subset(dms_predictions, REVEL_evidence == "intermediate" & !is.na(functional_score)))) #928
+print(nrow(subset(dms_predictions, REVEL_evidence == "PP3" & !is.na(functional_score)))) #444
+print(nrow(subset(dms_predictions, REVEL_evidence == "PP3_M" & !is.na(functional_score)))) #1129
+print(nrow(subset(dms_predictions, REVEL_evidence == "PP3_S" & !is.na(functional_score)))) #491
+```
+
+```{r S5B_DMS_vs_AMclass}
+dms_predictions$AM_class <- factor(dms_predictions$AM_class, levels=c("likely_benign", "ambiguous", "likely_pathogenic"))
+
+DMSvsAMclass <- ggplot(data=subset(dms_predictions, !is.na(AM_class)), aes(y=functional_score, x=AM_class)) +
+  geom_hline(yintercept=1, color="gray") +
+  geom_jitter(color="gray", width=0.2, alpha=0.05, size=2, stroke=NA) +
+  geom_boxplot(outlier.shape=NA, fill=NA) +
+  ylim(-0.2, 1.5) +
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  ylab("functional score") +
+  xlab("Alpha Missense class")
+ggsave(file = "260212_DMSvsAMclass.pdf", DMSvsAMclass, device="pdf", height = 4, width = 2.5)
+
+print(TukeyHSD(aov(functional_score ~ AM_class, data = dms_predictions)))
+print(nrow(subset(dms_predictions, AM_class == "likely_benign" & !is.na(functional_score)))) #2255
+print(nrow(subset(dms_predictions, AM_class == "ambiguous" & !is.na(functional_score)))) #965
+print(nrow(subset(dms_predictions, AM_class == "likely_pathogenic" & !is.na(functional_score)))) #5677
+```
+
+```{r S5C_REVEL_histo}
+predictions_scores_long <- select(predictions, protein, AM_score, REVEL_score) %>% pivot_longer(cols = !c(protein), names_to ="predictor", values_to = "score")
+
+REVEL_histogram <- ggplot(data=subset(predictions_scores_long, predictor == "REVEL_score")) + 
+  geom_histogram(aes(x= score), fill="#cacaca", position="stack", binwidth = 0.03) +
+  geom_vline(xintercept = 0.290, linetype="dashed") +
+  geom_vline(xintercept = 0.644, linetype="dashed") +
+  labs(x="REVEL score", y="variants") +
+  xlim(0,NA)+
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "260210_REVEL_histogram.pdf", REVEL_histogram, device="pdf", height = 3, width = 4.3)
+
+print(nrow(subset(predictions, REVEL_score <= 0.290))) #71 benign evidence, 2.1%
+print(nrow(subset(predictions, REVEL_score > 0.290 & REVEL_score < 0.644))) #1081 intermediate, 31.5%
+print(nrow(subset(predictions, REVEL_score >= 0.644))) #2276 patho evidence, 66.4%
+print(nrow(subset(predictions, !is.na(REVEL_score)))) #3428 total
+```
+
+```{r S5D_AM_histo}
+predictions_scores_long <- select(predictions, protein, AM_score, REVEL_score) %>% pivot_longer(cols = !c(protein), names_to ="predictor", values_to = "score")
+
+AM_histogram <- ggplot(data=subset(predictions_scores_long, predictor == "AM_score")) + 
+  geom_histogram(aes(x= score), fill="#cacaca", position="stack", binwidth = 0.03) +
+  geom_vline(xintercept = 0.340, linetype="dashed") +
+  geom_vline(xintercept = 0.564, linetype="dashed") +
+  labs(x="Alpha Missense score", y="variants") +
+  xlim(0,NA) + 
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "260210_AM_histogram.pdf", AM_histogram, device="pdf", height = 3, width = 4.3)
+
+print(nrow(subset(predictions, AM_score <= 0.340))) #26911 benign evidence, 26.6%
+print(nrow(subset(predictions, AM_score > 0.340 & AM_score < 0.564))) #1143 intermediate, 11.3%
+print(nrow(subset(predictions, AM_score >= 0.564))) #6293 patho evidence, 62.1%
+print(nrow(subset(predictions, !is.na(AM_score)))) #10127 total
+```
+
+
+```{r S6A_abundance_score_interp}
+interp_histograms_abund <- ggplot(data=subset(dms_catalog, ClinVar_class %in% c("benign", "likely_benign", "likely_pathogenic", "pathogenic"))) + 
+  geom_histogram(aes(x=abund_score, fill=ClinVar_class), position="stack", binwidth = 0.03) +
+  scale_fill_manual(values=c("#940B08", "#E39F9D", "#A1AFE5", "#0F2D98")) +
+  geom_vline(xintercept=abund_synon_z1, linetype="dashed") +
+  geom_vline(xintercept=abund_synon_z3, linetype="dashed") +
+  labs(x="abundance score", y="variants", fill="ClinVar\nClassification") +
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "260212_interp_histogram_abund.pdf", interp_histograms_abund, device="pdf", height = 3, width = 5.5)
+
+print(nrow(subset(dms_catalog, type.x=="M" & abund_score<abund_synon_z3))) #105 missense with patho evidence have been found in people
+print(nrow(subset(dms_catalog, type.x=="M" & abund_score<abund_synon_z3 & !(consensus_class %in% c("B/LB", "P/LP"))))) #46 VUS with patho evidence have been found in people
+print(nrow(subset(dms_catalog, type.x=="M" & abund_score<abund_synon_z3 & consensus_class == "B/LB"))) #0 B/LB get patho evidence 
+print(nrow(subset(dms_catalog, type.x=="M" & abund_score<abund_synon_z3 & consensus_class == "P/LP"))) #59 P/LP get patho evidence
+
+print(nrow(subset(dms_catalog, type.x=="M" & abund_score>abund_synon_z1))) #350 with benign evidence have been found in people
+print(nrow(subset(dms_catalog, type.x=="M" & abund_score>abund_synon_z1 & !(consensus_class %in% c("B/LB", "P/LP"))))) #265 VUS with benign evidence
+print(nrow(subset(dms_catalog, type.x=="M" & abund_score>abund_synon_z1 & consensus_class == "B/LB"))) #3 B/LB get benign evidence 
+print(nrow(subset(dms_catalog, type.x=="M" & abund_score>abund_synon_z1 & consensus_class == "P/LP"))) #82 P/LP get benign evidence 
+
+#total number  with abundance scores
+print(nrow(subset(g6pd_scores, !is.na(abund_score)))) #10674
+#total number missense with abundance scores
+print(nrow(subset(g6pd_scores, type=="M" & !is.na(abund_score)))) #9676
+#number of missense variants with abundance score over z=-1 from synonymous
+print(nrow(subset(g6pd_scores, type=="M" & abund_score>abund_synon_z1))) #5331
+#number of missense variants with abundance score under z=-3 
+print(nrow(subset(g6pd_scores, type=="M" & abund_score<abund_synon_z3 ))) #2391
+```
+
+```{r oddspath_abundance}
+benign_evidence_abund <- subset(dms_catalog_all, abund_score > abund_synon_z1)
+patho_evidence_abund <- subset(dms_catalog_all, abund_score < abund_synon_z3)
+
+n_pathogenic_controls_abund <- nrow(subset(dms_catalog_all, consensus_class == "P/LP" & !is.na(abund_score)))
+n_benign_controls_abund <- nrow(subset(dms_catalog_all, consensus_class == "B/LB" & !is.na(abund_score)))
+
+#how many clinvar path/benign vars get normal or abnormal functional scores
+n_path_abnormal_abund  <- nrow(subset(dms_catalog_all, consensus_class == "P/LP" & abund_score < abund_synon_z3))
+n_path_normal_abund  <- nrow(subset(dms_catalog_all, consensus_class == "P/LP" & abund_score > abund_synon_z1))
+n_benign_abnormal_abund  <- nrow(subset(dms_catalog_all, consensus_class == "B/LB" & abund_score < abund_synon_z3))
+n_benign_normal_abund  <- nrow(subset(dms_catalog_all, consensus_class == "B/LB" & abund_score > abund_synon_z1))
+
+# Prior probability (P1): Proportion of pathogenic variants in the total control set
+p1_abund <- n_pathogenic_controls_abund / (n_pathogenic_controls_abund + n_benign_controls_abund)
+
+# Posterior probability (P2) for an "abnormal" result: Proportion of pathogenic variants among controls with abnormal results
+p2_abnormal_abund <- n_path_abnormal_abund / (n_path_abnormal_abund + n_benign_abnormal_abund)
+# OddsPath for functionally abnormal results
+oddspath_abnormal_abund <- (p2_abnormal_abund * (1 - p1_abund)) / ((1 - p2_abnormal_abund) * p1_abund) #17.71 -> PS3_moderate
+
+# Posterior probability (P2) for a "normal" result: Proportion of pathogenic variants among controls with normal results
+p2_normal_abund <- n_path_normal_abund / (n_path_normal_abund + n_benign_normal_abund)
+# OddsPath for functionally normal results
+oddspath_normal_abund <- (p2_normal_abund * (1 - p1_abund)) / ((1 - p2_normal_abund) * p1_abund) #0.4834 -> indeterminate
+```
+
+```{r S6B_activity_score_interp}
+#calculate zscores of synonymous distribution for benchmarking
+synon_noNAact <- subset(synon_scores, !is.na(stress_score))
+
+interp_histograms_activity <- ggplot(data=subset(dms_catalog, ClinVar_class %in% c("benign", "likely_benign", "likely_pathogenic", "pathogenic"))) + 
+  geom_histogram(aes(x=stress_score, fill=ClinVar_class), position="stack", binwidth = 0.03) +
+  scale_fill_manual(values=c("#940B08", "#E39F9D", "#A1AFE5", "#0F2D98")) +
+  geom_vline(xintercept=activ_synon_z1, linetype="dashed") +
+  geom_vline(xintercept=activ_synon_z3, linetype="dashed") +
+  labs(x="activity score", y="variants", fill="ClinVar\nClassification") +
+  theme_linedraw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+ggsave(file = "260210_interp_histogram_activity.pdf", interp_histograms_activity, device="pdf", height = 3, width = 5.5)
+
+print(nrow(subset(dms_catalog, type.x=="M" & stress_score<activ_synon_z3))) #225 missense with patho evidence have been found in people
+print(nrow(subset(dms_catalog, type.x=="M" & stress_score<activ_synon_z3 & !(consensus_class %in% c("B/LB", "P/LP"))))) #105 VUS with patho evidence have been found in people
+print(nrow(subset(dms_catalog, type.x=="M" & stress_score<activ_synon_z3 & consensus_class == "B/LB"))) #0 B/LB get patho evidence 
+print(nrow(subset(dms_catalog, type.x=="M" & stress_score<activ_synon_z3 & consensus_class == "P/LP"))) #120 P/LP get patho evidence
+
+print(nrow(subset(dms_catalog, type.x=="M" & stress_score>activ_synon_z1))) #167 with benign evidence have been found in people
+print(nrow(subset(dms_catalog, type.x=="M" & stress_score>activ_synon_z1 & !(consensus_class %in% c("B/LB", "P/LP"))))) #145 VUS with benign evidence
+print(nrow(subset(dms_catalog, type.x=="M" & stress_score>activ_synon_z1 & consensus_class == "B/LB"))) #4 B/LB get benign evidence 
+print(nrow(subset(dms_catalog, type.x=="M" & stress_score>activ_synon_z1 & consensus_class == "P/LP"))) #18 P/LP get benign evidence 
+
+#total number  with activity scores
+print(nrow(subset(g6pd_scores, !is.na(stress_score)))) #9133 
+#total number missense with activity scores
+print(nrow(subset(g6pd_scores, type=="M" & !is.na(stress_score)))) #8217 
+#number of missense variants with activity score over z=-1 from synonymous
+print(nrow(subset(g6pd_scores, type=="M" & stress_score>activ_synon_z1))) #1917 
+#number of missense variants with activity score under z=-3 
+print(nrow(subset(g6pd_scores, type=="M" & stress_score<activ_synon_z3 ))) #4940 
+```
+
+```{r oddspath_activity}
+benign_evidence_act <- subset(dms_catalog_all, stress_score > activ_synon_z1)
+patho_evidence_act <- subset(dms_catalog_all, stress_score < activ_synon_z3)
+
+n_pathogenic_controls_act <- nrow(subset(dms_catalog_all, consensus_class == "P/LP" & !is.na(stress_score)))
+n_benign_controls_act <- nrow(subset(dms_catalog_all, consensus_class == "B/LB" & !is.na(stress_score)))
+
+#how many clinvar path/benign vars get normal or abnormal functional scores
+n_path_abnormal_act  <- nrow(subset(dms_catalog_all, consensus_class == "P/LP" & stress_score < activ_synon_z3))
+n_path_normal_act  <- nrow(subset(dms_catalog_all, consensus_class == "P/LP" & stress_score > activ_synon_z1))
+n_benign_abnormal_act  <- nrow(subset(dms_catalog_all, consensus_class == "B/LB" & stress_score < activ_synon_z3))
+n_benign_normal_act  <- nrow(subset(dms_catalog_all, consensus_class == "B/LB" & stress_score > activ_synon_z1))
+
+# Prior probability (P1): Proportion of pathogenic variants in the total control set
+p1_act <- n_pathogenic_controls_act / (n_pathogenic_controls_act + n_benign_controls_act)
+
+# Posterior probability (P2) for an "abnormal" result: Proportion of pathogenic variants among controls with abnormal results
+p2_abnormal_act <- n_path_abnormal_act / (n_path_abnormal_act + n_benign_abnormal_act)
+# OddsPath for functionally abnormal results
+oddspath_abnormal_act <- (p2_abnormal_act * (1 - p1_act)) / ((1 - p2_abnormal_act) * p1_act) #106.4 -> PS3
+
+# Posterior probability (P2) for a "normal" result: Proportion of pathogenic variants among controls with normal results
+p2_normal_act <- n_path_normal_act / (n_path_normal_act + n_benign_normal_act)
+# OddsPath for functionally normal results
+oddspath_normal_act <- (p2_normal_act * (1 - p1_act)) / ((1 - p2_normal_act) * p1_act) #0.126 -> BS3_mod
+```
